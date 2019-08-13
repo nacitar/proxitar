@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<RootNode>
+  <VersionInformation Incremental="1" Major="0" Minor="0"/>
+  <RequestID Value="E2DFA79C3D12A725A6C682955E3FF05F.3661687"/>
+  <RequestURI>/spenefett/fwd</RequestURI>
+  <WebGateRequest>1</WebGateRequest>
+  <RequestOwner>EXTBRM</RequestOwner>
+  <ObjectData>
+    <Logout>true</Logout>
+  </ObjectData>
+</RootNode>

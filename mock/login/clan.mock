@@ -1,0 +1,56 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<META http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Darkfall Clan</title>
+<link rel="stylesheet" type="text/css" href="/spenefett/static/gamebrowser/css/dfstyle.css">
+<script type="text/javascript">
+                  var ImagePath ='/spenefett/static/gamebrowser/';
+                var cheater = new Array()
+                </script><script type="text/javascript" src="/spenefett/static/gamebrowser/js/jquery-1.2.6.min.js"></script><script type="text/javascript" src="/spenefett/static/gamebrowser/js/library.js"></script><script type="text/javascript" src="/spenefett/static/gamebrowser/js/plugin.js"></script>
+</head>
+<body>
+<div id="main_tabpanel2">
+<div id="PagePanelTabMain" class="PagePanelTabMain">
+<div id="main_tabpanel"></div>
+</div>
+<div id="PageTabs"></div>
+</div>
+<script type="text/javascript">
+                
+                	
+					var RequestURI       =  '/spenefett/fwd'
+					var SessionKey       =  '0W5rLpzMAllKp0oO5BYjaALsWGY4LqjC'
+					var ClanID           =  '12345'
+					var BannerRequest    =  '2'
+					var MenuRequest      =  '3'					
+					var RequestOwner     =  'QETUO'		
+					var OverViewRequest  =  '37'		
+					
+					
+					var javaServer = true;
+					
+					
+				
+					
+				var XMLData = "";
+
+$().ready(function($) {
+
+
+
+		
+		
+	bannerUrl = RequestURI + "?SessionKey=" + SessionKey + "&WebGateRequest=" + BannerRequest + "&RequestOwner=" + RequestOwner;
+	menuUrl = RequestURI + "?SessionKey=" + SessionKey + "&WebGateRequest=" + MenuRequest + "&RequestOwner=" + RequestOwner;
+	
+	CPageStarter()
+
+});
+
+	
+					
+                </script>
+</body>
+</html>
