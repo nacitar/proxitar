@@ -90,30 +90,29 @@ class ApiClient(object):
     def time_string():
         return str(int(time.time()))
 
-    def __init__(self, web_url):
+    def __init__(self, web_url, session_file=None, mock_set=None, option_set=None):
         self.web_url = web_url
-        self.mock_set = set()  # {} is a dict, so, use set()
-        self.option_set = {
-                ClientOption.PRINT_APIERROR,
-                ClientOption.PRINT_CLANID,
-                ClientOption.PRINT_SESSION}
-        self.session_key = None # string
-        self.clan_id = None # int
-        self.session_file = None
-    
-    def use_session_file(self, session_file):
+        self.mock_set = set(mock_set) if (mock_set is not None) else set()
+        # it never makes sense for ERROR to not be mocked... you'd always be expecting
+        # success, thus an error is only useful here in testing/mocking.
+        self.mock_set.add(ApiCategory.ERROR)
+        self.option_set = set(option_set) if (option_set is not None) else {
+            ClientOption.PRINT_APIERROR
+        }
+        self.session_key = None
+        self.clan_id = None
         self.session_file = session_file
+        
+    def load_session(self):
         try:
-            with open(session_file) as handle:
+            with open(self.session_file) as handle:
                 session = json.loads(handle.read()).get('Session',{})
         except FileNotFoundError:
             session = {}
         new_session_key = session.get('SessionKey', None)
         new_clan_id = session.get('ClanID', None)
         if new_session_key and new_clan_id:
-            new_clan_id = int(new_clan_id)
-            # don't save, because we just loaded it
-            if self.use_session(new_session_key, new_clan_id, save=False):
+            if self.use_session(new_session_key, new_clan_id):
                 if ClientOption.PRINT_SESSION in self.option_set:
                     print(f"Session was loaded from file: {self.session_file}")
         if not self.session_key:
@@ -145,7 +144,7 @@ class ApiClient(object):
         # at this point, we have the response, but we need to see if it is xml
         # and if so, pull some things out of it
         while True:
-            # this loop only reruns if the 'continue' occurs; otherwise it returns a the end.
+            # this loop only reruns if the 'continue' occurs; otherwise it returns at the end.
             try:
                 root_element = ET.fromstring(response_content)
             except:
@@ -182,7 +181,7 @@ class ApiClient(object):
 
     def save_session(self):
         global JSON_INDENT
-        if self.session_file and self.session_key:
+        if self.session_file:
             json_string = json.dumps(
                 {
                     'Session':{
@@ -202,34 +201,38 @@ class ApiClient(object):
                 # this message shouldn't be able to be turned off
                 print(f"Exception when writing session file: {self.session_file}")
 
-    # clan_id is used for optional validation
-    def use_session(self, session_key, clan_id=None, save=True):
-        global JSON_INDENT
-        self.session_key = session_key
-        success = False
-        try:
-            self.get_clan_id()
-        except ApiError as e:
-            print(e)
-         
-        if self.clan_id:
-            if clan_id is not None and int(clan_id) != self.clan_id:  # int cast is just in case someone passes in a string clan_id
-                if ClientOption.PRINT_SESSION in self.option_set:
-                    print("The retrieved clan id does not match the one specified, so this session key could belong to someone else by some strange coincidence.  A new session will need to be created.")
-            else:
-                success = True
-        if success:
+    def clear_session(self):
+        self.session_key = None
+        self.clan_id = None
+    
+    def validate_session(self):
+        old_clan_id = self.clan_id
+        if old_clan_id is not None:
+            try:
+                self.update_clan_id()
+            except ApiError as e:
+                print(e)
+        if self.clan_id is None or self.clan_id != old_clan_id:
             if ClientOption.PRINT_SESSION in self.option_set:
-                print(f"Session ready.")
-            if save:
-                self.save_session()
-        else:
-            self.clan_id = None
-            self.session_key = None
+                print('Session validation failed; clearing session.')
+            self.clear_session()
+        if self.clan_id:
+            if ClientOption.PRINT_SESSION in self.option_set:
+                print('Session validation successful.')
         return self.session_key
 
+    # clan_id is used for optional validation
+    def use_session(self, session_key, clan_id):
+        if session_key and clan_id:
+            self.session_key = session_key
+            self.clan_id = clan_id
+            self.validate_session()
+        else:
+            self.clear_session()
+        return self.session_key
+    
     def login(self, user_name, password_sha1):
-        self.session_key = None  # so if an exception occurs, it is cleared
+        self.clear_session()  # so if an exception occurs, it is cleared
         parameters = {
             'WebGateRequest': '1',
             'RequestOwner': 'EXTBRM',
@@ -251,10 +254,16 @@ class ApiClient(object):
             root_element = self.request(parameters, "success", ApiCategory.LOGIN, expect_xml=True)
             session_key_element = root_element.find('./SessionKey')
             session_key = session_key_element.text if (session_key_element is not None) else None
-            self.use_session(session_key)
+            
+            self.session_key = session_key
+            if self.update_clan_id():
+                if ClientOption.PRINT_SESSION in self.option_set:
+                    print('New session established.')
+            else:
+                self.clear_session()
         return self.session_key
 
-    def get_clan_id(self):
+    def update_clan_id(self):
         global CLANID_REGEX
         self.clan_id = None  # so if an exception occurs, it is cleared
         parameters = {
@@ -264,15 +273,15 @@ class ApiClient(object):
         }
         response = self.request(parameters, "clan", ApiCategory.LOGIN, expect_xml=False)
         match = CLANID_REGEX.search(response)
-        self.clan_id = int(CLANID_REGEX.search(response).group(1) if match else None)
+        self.clan_id = CLANID_REGEX.search(response).group(1) if match else None
         if ClientOption.PRINT_CLANID in self.option_set:
             print(f"ClanID: {self.clan_id}")
         return self.clan_id
     
-    def overview(self):
+    def get_clan_overview(self):
         parameters = {
             'ClanID': self.clan_id,
-            'WebGateRequest': 37,
+            'WebGateRequest': '37',
             'RequestOwner': 'QETUO',
             'SessionKey': self.session_key
         }
