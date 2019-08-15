@@ -32,6 +32,7 @@ class ApiError(Exception):
     pass
 
 # TODO: consider _requiring_ mock_name, consider writing out missing mocks
+# TODO: reorder class methods?
 class ApiClient(object):
     """ Connects to the server and manages the session. """
     
@@ -90,6 +91,10 @@ class ApiClient(object):
     def time_string():
         return str(int(time.time()))
 
+    def clear_session(self):
+        self.session_key = None
+        self.clan_id = None
+        
     def __init__(self, web_url, session_file=None, mock_set=None, option_set=None):
         self.web_url = web_url
         self.mock_set = set(mock_set) if (mock_set is not None) else set()
@@ -99,8 +104,7 @@ class ApiClient(object):
         self.option_set = set(option_set) if (option_set is not None) else {
             ClientOption.PRINT_APIERROR
         }
-        self.session_key = None
-        self.clan_id = None
+        self.clear_session()
         self.session_file = session_file
         
     def load_session(self):
@@ -200,10 +204,6 @@ class ApiClient(object):
                 print(e)
                 # this message shouldn't be able to be turned off
                 print(f"Exception when writing session file: {self.session_file}")
-
-    def clear_session(self):
-        self.session_key = None
-        self.clan_id = None
     
     def validate_session(self):
         old_clan_id = self.clan_id
