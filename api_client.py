@@ -221,7 +221,6 @@ class ApiClient(object):
                 print('Session validation successful.')
         return self.session_key
 
-    # clan_id is used for optional validation
     def use_session(self, session_key, clan_id):
         if session_key and clan_id:
             self.session_key = session_key
