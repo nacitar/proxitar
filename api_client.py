@@ -60,30 +60,54 @@ class ApiClient(object):
         offset_map = {}
         entries = data.split(',')
         for i in range(len(entries)):
-            # store the index into the output buffer for the start of this entry
+            # Store the index into the output buffer so references can get
+            # start of this entry and can deduce that it ends at either the
+            # start of the next entry or the end of the full output if this
+            # entry is the last.
             offset_map[i] = len(output)
             entry = entries[i].strip()
             if entry.startswith('_'):
-                # entries that start with _ are back references that indicate that the entire contents
-                # of the value produced by the entry of the corresponding index... and the first character
-                # of the value produced by the NEXT entry.  For example, _0 means to get the value
-                # produced by the first entry (index 0) in this list, and the first character of the value
-                # produced by the second entry (index 1) in this list.
-                back_ref = int(entry[1:])
-                if back_ref >= i:
-                    # can't really do much better than raising the exception.. whatever data I might
-                    # provide would definitely be wrong, but this way it won't be silent about it.
-                    raise ValueError(f"Invalid back reference in entry {i}, references future entry {back_ref}: {data}")
-                offset = offset_map[back_ref]
-                next_offset = offset_map[back_ref+1]
-                # if there were never any backreferences to the entry immediately prior to the current one
-                # this could be written: output += output[offset:next_offset+1]
-                # However, we cannot because the first character of the next entry would then be the first
-                # character of THIS entry, which isn't in the buffer yet... so we have to add that character first, just in case.
-                output += output[offset]
-                output += output[offset+1:next_offset+1]
+                # An entry prefixed with an underscore (a reference) is the
+                # ASCII representation of the zero-based integer index of a
+                # prior entry in the input data, indicating that the output of
+                # this entry is the output of the referenced entry
+                # concatenated with the first character of the output of the
+                # entry after the referenced entry.
+                #
+                # For example, _0 indicates that the output of this entry is
+                # the output of the first entry (index 0) in the input data
+                # concatenated with the first character of the output of the
+                # second entry (index 1) in the input data.
+                reference_index = int(entry[1:])
+                if reference_index >= i:
+                    # Can't reference this entry or any future entry.
+                    raise ValueError(
+                        f"Invalid back reference in entry {i}, references"
+                        f" future entry {reference_index}: {data}"
+                    )
+                offset = offset_map[reference_index]
+                next_offset = offset_map[reference_index+1]
+                if reference_index == (i-1):
+                    # If the reference is to the previous entry, then the
+                    # first character of the output of this entry will also be
+                    # the last character of the output of this entry.  The
+                    # output buffer of course does not yet have any of the
+                    # output of this entry written.  The logic thus follows to
+                    # write the first character of the output of this entry
+                    # first, and then write the rest which will end with that
+                    # newly written character.
+                    output += output[offset]
+                    output += output[offset+1:next_offset+1]
+                else:
+                    # For every index earlier than the prior one, both the
+                    # referenced entry and the entry after it are both already
+                    # written to the output buffer, thus the output of this
+                    # entry can be copied over in one operation.
+                    output += output[offset:next_offset+1]
             else:
-                # entries without a _ prefix are just ascii values for a single character.
+                # An entry not prefixed by an underscore is the decimal ASCII
+                # representation of a character, indicating that the output of
+                # this entry is that character.
                 output += chr(int(entry))
         return output
 
@@ -200,10 +224,14 @@ class ApiClient(object):
                     handle.write(json_string)
                 if ClientOption.PRINT_SESSION in self.option_set:
                     print(f"Session was saved to file: {self.session_file}")
+                return True
             except Exception as e:
                 print(e)
                 # this message shouldn't be able to be turned off
                 print(f"Exception when writing session file: {self.session_file}")
+        return False
+            
+        
     
     def validate_session(self):
         old_clan_id = self.clan_id
@@ -287,6 +315,6 @@ class ApiClient(object):
         root_element = self.request(parameters, "overview", ApiCategory.CLAN, expect_xml=True)
         # there is a df123133 (random numbers) intermediary tag, hence the //
         overview_element = root_element.find('.//ObjectData/OverviewNode')
-        if overview_element is not None:
-            return self.__class__.element_to_flat_dict(overview_element)
-        raise ApiError('Overview response lacked OverviewNode.')
+        if overview_element is None:
+            raise ApiError('Overview response lacked OverviewNode.')
+        return self.__class__.element_to_flat_dict(overview_element)
