@@ -2,14 +2,149 @@ import sys
 import os
 import re
 import json
+import http.client
 import urllib
 import urllib.parse
 import urllib.request
 import time
 import hashlib
 import xml.etree.ElementTree as ET
-from enum import Enum, auto
-from collections import deque
+from enum import Enum, auto, IntEnum
+from collections import deque;
+# they have an extra & here in their code"/spenefett/fwd?&SessionKey= 
+
+def api_parse_url(url):
+    parsed_url = urllib.parse.urlparse(url)
+    if parsed_url.query:
+        raise ValueError('Query string not allowed in the url.')
+    if parsed_url.scheme != 'http':
+        raise ValueError('Url is not using http scheme.')
+    parts = parsed_url.netloc.split(':', 1)
+    if len(parts) == 2:
+        port = parts[1]
+    else:
+        port = 80
+    host = parts[0]
+    return (parsed_url, host, port)
+
+def api_http_connection(url):
+    parsed_url, host, port = api_parse_url(url)
+    connection = http.client.HttpConnection(host, port)
+    return connection
+
+# Referer: http://107.155.100.182:50313/spenefett/fwd?&SessionKey=KEYHERE&WebGateRequest=3&RequestOwner=EXTBRM&RequestOwner=EXTBRM
+def api_http_request(url, query=None, form_data=None, headers=None, referer=None, connection=None, print_request=False):
+    if query and not isinstance(query, str):
+        encoded_query = urllib.parse.urlencode(query)
+    else:
+        encoded_query = ''
+    if connection is None:
+        persistent = False
+        parsed_url = api_parse_url(url)[0]
+        connection = api_http_connection(url)
+        url = parsed_url.path
+    else:
+        persistent = True
+    if form_data and not isinstance(form_data, str):
+        # allow for some flexibility here
+        form_data = urllib.parse.urlencode(form_data)
+    if headers is None:
+        headers = {}
+    headers.update({
+        # look like chrome
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
+        'Accept-Language': 'en-US,en;q=0.9'
+        #'Cache-Control:': 'max-age=0'  # only on main page load so far
+    })
+    if persistent:
+        headers['Connection'] = 'keep-alive'
+    if referer is not None:
+        headers['Referer'] = referer
+    method = 'POST' if (form_data is not None) else 'GET'
+    if encoded_query:
+        request_url = f"{url}?{encoded_query}"
+    else:
+        request_url = url
+    if print_request:
+        print(f"Request: {request_url}")
+        print(f"Post data: {form_data}")
+    connection.request(method=method, url=request_url, headers=headers, body=form_data)
+    response_object = connection.getresponse()
+    response = response_object.read()
+    if not persistent:
+        connection.close()
+    return response
+
+class ApiHttpConnection(object):
+    def __init__(self):
+        self.connection = None
+        
+    def connect(self, host, port):
+        if self.connection:
+            self.close()
+        self.connection = http.client.HTTPConnection(host, port)
+        return self.connection
+    
+    def request(self, url, query=None, form_data=None, headers=None, referer=None, print_request=False):
+        if self.connection is None:
+            raise RuntimeError('No connection.  Did you forget to call connect()?')
+        return api_http_request(url=url, query=query, form_data=form_data, headers=headers, referer=referer, connection=self.connection, print_request=print_request)
+        
+    def close(self):
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+
+# after logging out, has old session key http://107.155.100.182:50313/spenefett/fwd?SessionKey=OLDKEYHERE
+# http://107.155.100.182:50313/spenefett/fwd for frame request
+# base url itself gives login page, with javascript with the WebGateRequest/RequestOwner for the challenge request
+class RequestOwner(Enum):
+    LOGIN = 'EXTBRM'
+    CLAN = 'QETUO'
+    JOURNAL = 'WRYIP'
+    
+class LoginWebGateRequest(IntEnum):
+    CHALLENGE_REQUEST = 1
+    CHALLENGE_RESPONSE = 2
+    # The outer page with the framed navigation panel providing
+    # the clan/journal tabs.
+    # In javascript has RequestOwner and main WebGateRequest for Clan and Journal tabs
+    BROWSER_FRAME = 3
+        # Query: SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
+        # referer: http://107.155.100.182:50313/spenefett/fwd
+        # This serves as every referer after
+
+class ClanWebGateRequest(IntEnum):
+    # Provides the WebGateRequest for various API functions, banner, menu, overview, clanid
+    GET_NAVIGATION_INFORMATION = 1
+    GET_BANNER = 2
+    GET_MENU = 3
+    CLAN_OVERVIEW_PAGE = 37
+    
+class JournalWebGateRequest(IntEnum):
+    GET_NAVIGATION_INFORMATION = 1  # nothing useful is here, it just gives the WebGateRequest for the MENU
+    MENU = 2
+    
+class NewsReelFilter(IntEnum):
+    BINDS = 0
+    PROXIMITY = 1
+    CONNECTIONS = 2
+    POLITICS = 3
+    RANKS = 4
+    STRUCTURES = 5
+    RESOURCES = 6
+    WORKSTATIONS = 7
+    MEMBERS = 8
+    CONTROL_POINTS = 9
+    FORTRESSES = 10
+    MISC = 11
+# assembles as colon delimited sorted numbers
+    
+class TimeFilter(IntEnum):
+    ONE_DAY = 0,
+    THREE_DAYS = 1,
+    SEVEN_DAYS = 2
 
 class ClientOption(Enum):
     PRINT_REQUEST = auto()
@@ -128,9 +263,26 @@ class ApiClient(object):
         self.option_set = set(option_set) if (option_set is not None) else {
             ClientOption.PRINT_APIERROR
         }
-        self.clear_session()
         self.session_file = session_file
+        self.connection = None
+        self.disconnect()
         
+    
+    # TODO: migrate to connection object
+    def disconnect(self):
+        self.clear_session()
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+    
+    def connect(self):
+        self.disconnect()
+        parsed_url, host, port = api_parse_url(self.web_url)
+        self.connection = ApiHttpConnection()
+        self.connection.connect(host, port)
+        self.request_root = parsed_url.path
+        return self.connection
+
     def load_session(self):
         try:
             with open(self.session_file) as handle:
@@ -145,16 +297,12 @@ class ApiClient(object):
                     print(f"Session was loaded from file: {self.session_file}")
         if not self.session_key:
             if ClientOption.PRINT_SESSION in self.option_set:
-                    print(f"Session in file is not valid: {self.session_file}")
+                print(f"Session in file is not valid: {self.session_file}")
         return self.session_key
 
-    def request(self, parameters, mock_name=None, mock_category=None, expect_xml=None):
+    def request(self, query=None, form_data=None, mock_name=None, mock_category=None, expect_xml=None):
         global SCRIPT_DIRECTORY
-        # parameters dictionary ==> query string
-        encoded_parameters = urllib.parse.urlencode(parameters)
-        request_url = f"{self.web_url}?{encoded_parameters}"
-        if ClientOption.PRINT_REQUEST in self.option_set:
-            print(f"Request: {request_url}")
+        # TODO: headers, referer
         mocking = mock_name and mock_category is not None and mock_category in self.mock_set
         if mocking:
             mock_path = os.path.join(SCRIPT_DIRECTORY, 'mock', mock_category.name.lower(), f"{mock_name.lower()}.mock")
@@ -163,8 +311,12 @@ class ApiClient(object):
         else:
             if ClientOption.FORCE_MOCKING in self.option_set:
                 raise RuntimeError(f"FORCE_MOCKING is set, cannot make actual request: {request_url}")
-            with urllib.request.urlopen(request_url) as response:
-                response_content = response.read().decode('utf-8')
+            response_content = self.connection.request(
+                    url=self.request_root,
+                    query=query,
+                    form_data=form_data,
+                    print_request=(ClientOption.PRINT_REQUEST in self.option_set)
+            ).decode('utf-8')
         if mocking:
             print(f"MockedResponse: {mock_path}")
         if ClientOption.PRINT_RESPONSE in self.option_set:
@@ -230,8 +382,6 @@ class ApiClient(object):
                 # this message shouldn't be able to be turned off
                 print(f"Exception when writing session file: {self.session_file}")
         return False
-            
-        
     
     def validate_session(self):
         old_clan_id = self.clan_id
@@ -248,7 +398,7 @@ class ApiClient(object):
             if ClientOption.PRINT_SESSION in self.option_set:
                 print('Session validation successful.')
         return self.session_key
-
+    
     def use_session(self, session_key, clan_id):
         if session_key and clan_id:
             self.session_key = session_key
