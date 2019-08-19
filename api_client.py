@@ -99,31 +99,48 @@ class ApiHttpConnection(object):
 # after logging out, has old session key http://107.155.100.182:50313/spenefett/fwd?SessionKey=OLDKEYHERE
 # http://107.155.100.182:50313/spenefett/fwd for frame request
 # base url itself gives login page, with javascript with the WebGateRequest/RequestOwner for the challenge request
+# - no referer
 class RequestOwner(Enum):
     LOGIN = 'EXTBRM'
+        # Main page: no querystring
+        # main page (no query), challenge request, challenge response, browser frame
     CLAN = 'QETUO'
     JOURNAL = 'WRYIP'
     
 class LoginWebGateRequest(IntEnum):
     CHALLENGE_REQUEST = 1
+        # Query: extra &, WebGateRequest, RequestOwner, _, UserName, RequestOwner
+        # Referer: http://107.155.100.182:50313/spenefett/fwd
     CHALLENGE_RESPONSE = 2
+        # Query: extra &, WebGateRequest, _, Password, UserName, RequestOwner
+        # Referer: http://107.155.100.182:50313/spenefett/fwd
+        
     # The outer page with the framed navigation panel providing
     # the clan/journal tabs.
     # In javascript has RequestOwner and main WebGateRequest for Clan and Journal tabs
     BROWSER_FRAME = 3
-        # Query: SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
+        # Query: extra & SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
         # referer: http://107.155.100.182:50313/spenefett/fwd
-        # This serves as every referer after
+        # This becomes every referer outside of login requests.
 
+# All Referers: http://107.155.100.182:50313/spenefett/fwd?&SessionKey=THEKEY&WebGateRequest=3&RequestOwner=EXTBRM&RequestOwner=EXTBRM
 class ClanWebGateRequest(IntEnum):
     # Provides the WebGateRequest for various API functions, banner, menu, overview, clanid
-    GET_NAVIGATION_INFORMATION = 1
-    GET_BANNER = 2
+    GET_DATA = 1  # I named this
+        # Query: SessionKey, WebGateRequest, RequestOwner
+        # Post: ogb=true
+    GET_BANNER = 2 
+        # Query: SessionKey, WebGateRequest, RequestOwner
+        # Post: ClanID=123
     GET_MENU = 3
+        # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
+        # Post: ClanID=123
     CLAN_OVERVIEW_PAGE = 37
+        # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
+        # Post: id=1 (TODO: why? where does this come from? figure it out)
     
 class JournalWebGateRequest(IntEnum):
-    GET_NAVIGATION_INFORMATION = 1  # nothing useful is here, it just gives the WebGateRequest for the MENU
+    GET_DATA = 1  # nothing useful is here, it just gives the WebGateRequest for the MENU
     MENU = 2
     
 class NewsReelFilter(IntEnum):
@@ -267,8 +284,6 @@ class ApiClient(object):
         self.connection = None
         self.disconnect()
         
-    
-    # TODO: migrate to connection object
     def disconnect(self):
         self.clear_session()
         if self.connection:
