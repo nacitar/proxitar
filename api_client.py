@@ -449,32 +449,43 @@ class ApiClient(object):
         return f"{self.web_url}?{query}"
         
     def login(self, user_name, password_sha1):
+        # The login pages all have an extra & erroneously added to the query
+        # in the embedded javascript code.
         self.clear_session()  # so if an exception occurs, it is cleared
-        login_web_url = f"{self.web_url}"   
-        # The login pages all have an extra & erroneously added to this by
-        # the embedded javascript code.
-        query = '&' + urllib.parse.urlencode([
-            ('WebGateRequest', LoginWebGateRequest.CHALLENGE_REQUEST.value),
-            ('RequestOwner', RequestOwner.LOGIN.value),
-            ('_', self.__class__.time_string()),
-            ('UserName', user_name),
-            ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
-        ])
+        web_gate_request = LoginWebGateRequest.CHALLENGE_REQUEST
+        request_owner = RequestOwner.LOGIN
         # send initial request to get the RCK salt
-        root_element = self.request(query=query, referer=self.web_url, mock_name="challenge", mock_category=ApiCategory.LOGIN, expect_xml=True)
+        root_element = self.request(
+            query='&' + urllib.parse.urlencode([
+                ('WebGateRequest', web_gate_request.value),
+                ('RequestOwner', request_owner.value),
+                ('_', self.__class__.time_string()),
+                ('UserName', user_name),
+                ('RequestOwner', request_owner.value)  # Specified again to match client behavior.
+            ]),
+            referer=self.web_url,
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.LOGIN,
+            expect_xml=True
+        )
         rck_element = root_element.find('./RCK')
         rck = rck_element.text if (rck_element is not None) else None
         if rck:
             salted_password_sha1 = hashlib.sha1((password_sha1.upper() + rck).encode('ascii')).hexdigest().upper()
-            query = '&' + urllib.parse.urlencode([
-                ('WebGateRequest', LoginWebGateRequest.CHALLENGE_RESPONSE.value),
-                ('_', self.__class__.time_string()),
-                ('Password', salted_password_sha1),
-                ('UserName', user_name),
-                ('RequestOwner', RequestOwner.LOGIN.value),
-            ])
+            web_gate_request = LoginWebGateRequest.CHALLENGE_RESPONSE
             # send the salted password to get the SessionKey
-            root_element = self.request(query=query, referer=self.web_url, mock_name="success", mock_category=ApiCategory.LOGIN, expect_xml=True)
+            root_element = self.request(
+                query='&' + urllib.parse.urlencode([
+                    ('WebGateRequest', web_gate_request.value),
+                    ('_', self.__class__.time_string()),
+                    ('Password', salted_password_sha1),
+                    ('UserName', user_name),
+                    ('RequestOwner', request_owner.value),
+                ]),
+                referer=self.web_url,
+                mock_name=web_gate_request.name.lower(),
+                mock_category=ApiCategory.LOGIN,
+                expect_xml=True)
             session_key_element = root_element.find('./SessionKey')
             session_key = session_key_element.text if (session_key_element is not None) else None
             self.session_key = session_key
@@ -487,16 +498,21 @@ class ApiClient(object):
     
     def update_clan_id(self):
         self.clan_id = None  # so if an exception occurs, it is cleared
-        query = [
-            ('SessionKey', self.session_key),
-            ('WebGateRequest', ClanWebGateRequest.GET_DATA.value),
-            ('RequestOwner', RequestOwner.CLAN.value),
-        ]
-        form_data = [('ogb', 'true')]
         # NOTE: if this isn't sent as a post with the Content-Type 'application/x-www-form-urlencoded; charset=utf-8'
         # the response is some page w/ javascript instead of the nice xml output... the code covers this internally
         # but this is worth mentioning.
-        root_element = self.request(query=query, form_data=form_data, referer=self.browser_frame_url(), mock_name="clan", mock_category=ApiCategory.LOGIN, expect_xml=True)
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('WebGateRequest', ClanWebGateRequest.GET_DATA.value),
+                ('RequestOwner', RequestOwner.CLAN.value),
+            ],
+            form_data=[('ogb', 'true')],
+            referer=self.browser_frame_url(),
+            mock_name="clan",
+            mock_category=ApiCategory.LOGIN,
+            expect_xml=True
+        )
         clan_id_element = root_element.find('./ClanID')
         self.clan_id = clan_id_element.text if (clan_id_element is not None) else None
         if ClientOption.PRINT_CLANID in self.option_set:
@@ -512,6 +528,7 @@ class ApiClient(object):
                 ('RequestOwner', RequestOwner.CLAN.value)
             ],
             form_data=[('ClanID', self.clan_id)],
+            referer=self.browser_frame_url(),
             mock_name=web_gate_request.name.lower(),
             mock_category=ApiCategory.CLAN,
             expect_xml=True
