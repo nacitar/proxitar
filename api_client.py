@@ -26,21 +26,16 @@ def api_parse_url(url):
     host = parts[0]
     return (parsed_url, host, port)
 
-def api_http_connection(url):
-    parsed_url, host, port = api_parse_url(url)
-    connection = http.client.HttpConnection(host, port)
-    return connection
-
 # Referer: http://107.155.100.182:50313/spenefett/fwd?&SessionKey=KEYHERE&WebGateRequest=3&RequestOwner=EXTBRM&RequestOwner=EXTBRM
 def api_http_request(url, query=None, form_data=None, headers=None, referer=None, connection=None, print_request=False):
     if query and not isinstance(query, str):
         encoded_query = urllib.parse.urlencode(query)
     else:
         encoded_query = query
+    parsed_url, host, port = api_parse_url(url)
     if connection is None:
         persistent = False
-        parsed_url = api_parse_url(url)[0]
-        connection = api_http_connection(url)
+        connection = http.client.HttpConnection(host, port)
         url = parsed_url.path
     else:
         persistent = True
@@ -71,8 +66,9 @@ def api_http_request(url, query=None, form_data=None, headers=None, referer=None
         headers['Referer'] = referer
         
     if form_data is not None:
-        headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8'
         method = 'POST'
+        headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8'
+        headers['Origin'] = f"{parsed_url.scheme}://{parsed_url.netloc}"
     else:
         method = 'GET'
     
@@ -291,7 +287,6 @@ class ApiClient(object):
     def clear_session(self):
         self.session_key = None
         self.clan_id = None
-        self.cookie = None
         
     def __init__(self, web_url, session_file=None, mock_set=None, option_set=None):
         self.web_url = web_url
@@ -311,13 +306,13 @@ class ApiClient(object):
         if self.connection:
             self.connection.close()
             self.connection = None
+        self.cookie = None
     
     def connect(self):
         self.disconnect()
         parsed_url, host, port = api_parse_url(self.web_url)
         self.connection = ApiHttpConnection()
         self.connection.connect(host, port)
-        self.request_root = parsed_url.path
         return self.connection
 
     def load_session(self):
@@ -355,7 +350,7 @@ class ApiClient(object):
                 headers['Cookie'] = self.cookie
                 
             response_headers, response_content = self.connection.request(
-                    url=self.request_root,
+                    url=self.web_url,
                     query=query,
                     form_data=form_data,
                     headers=headers,
