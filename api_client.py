@@ -1,6 +1,5 @@
 import sys
 import os
-import re
 import json
 import http.client
 import urllib
@@ -10,7 +9,7 @@ import time
 import hashlib
 import xml.etree.ElementTree as ET
 from enum import Enum, auto, IntEnum
-from collections import deque;
+from collections import deque
 # they have an extra & here in their code"/spenefett/fwd?&SessionKey= 
 
 def api_parse_url(url):
@@ -37,7 +36,7 @@ def api_http_request(url, query=None, form_data=None, headers=None, referer=None
     if query and not isinstance(query, str):
         encoded_query = urllib.parse.urlencode(query)
     else:
-        encoded_query = ''
+        encoded_query = query
     if connection is None:
         persistent = False
         parsed_url = api_parse_url(url)[0]
@@ -53,15 +52,30 @@ def api_http_request(url, query=None, form_data=None, headers=None, referer=None
     headers.update({
         # look like chrome
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
-        'Accept-Language': 'en-US,en;q=0.9'
-        #'Cache-Control:': 'max-age=0'  # only on main page load so far
+        
+        # Only when loading the LoginWebGateRequest.BROWSER_FRAME
+        #'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
+        
+        'Accept': 'application/xml, text/xml, */*',
+        'Accept-Encoding': 'gzip, deflate',  # not for main page/browser_frame
+        'Accept-Language': 'en-US,en;q=0.9',
+        'X-Requested-With': 'XMLHttpRequest'  # not for main page/browser_frame
+        
+        
+        # Only on main page load
+        #'Cache-Control:': 'max-age=0'
     })
     if persistent:
         headers['Connection'] = 'keep-alive'
     if referer is not None:
         headers['Referer'] = referer
-    method = 'POST' if (form_data is not None) else 'GET'
+        
+    if form_data is not None:
+        headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8'
+        method = 'POST'
+    else:
+        method = 'GET'
+    
     if encoded_query:
         request_url = f"{url}?{encoded_query}"
     else:
@@ -72,9 +86,10 @@ def api_http_request(url, query=None, form_data=None, headers=None, referer=None
     connection.request(method=method, url=request_url, headers=headers, body=form_data)
     response_object = connection.getresponse()
     response = response_object.read()
+    
     if not persistent:
         connection.close()
-    return response
+    return (dict(response_object.headers), response)
 
 class ApiHttpConnection(object):
     def __init__(self):
@@ -101,43 +116,50 @@ class ApiHttpConnection(object):
 # base url itself gives login page, with javascript with the WebGateRequest/RequestOwner for the challenge request
 # - no referer
 class RequestOwner(Enum):
+    # Main login page: no querystring, header {'Cache-Control:': 'max-age=0'}
+    # Request order: main page (no query), challenge request, challenge response, browser frame
     LOGIN = 'EXTBRM'
-        # Main page: no querystring
-        # main page (no query), challenge request, challenge response, browser frame
+    
+    # Request order: get data, get banner, get menu, clan overview page
     CLAN = 'QETUO'
-    JOURNAL = 'WRYIP'
+        
+    JOURNAL = 'WRYIP'  # unused
     
 class LoginWebGateRequest(IntEnum):
+    # Query: extra &, WebGateRequest, RequestOwner, _, UserName, RequestOwner (again)
+    # Referer: http://107.155.100.182:50313/spenefett/fwd
     CHALLENGE_REQUEST = 1
-        # Query: extra &, WebGateRequest, RequestOwner, _, UserName, RequestOwner
-        # Referer: http://107.155.100.182:50313/spenefett/fwd
+    
+    # Query: extra &, WebGateRequest, _, Password, UserName, RequestOwner
+    # Referer: http://107.155.100.182:50313/spenefett/fwd    
     CHALLENGE_RESPONSE = 2
-        # Query: extra &, WebGateRequest, _, Password, UserName, RequestOwner
-        # Referer: http://107.155.100.182:50313/spenefett/fwd
-        
+
     # The outer page with the framed navigation panel providing
     # the clan/journal tabs.
-    # In javascript has RequestOwner and main WebGateRequest for Clan and Journal tabs
-    BROWSER_FRAME = 3
-        # Query: extra & SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
-        # referer: http://107.155.100.182:50313/spenefett/fwd
-        # This becomes every referer outside of login requests.
+    # In javascript has the values for RequestOwner and main WebGateRequest for Clan and Journal tabs
+    # Query: extra & SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
+    # referer: http://107.155.100.182:50313/spenefett/fwd
+    # This URL is the referer for everything other than login requests.
+    BROWSER_FRAME = 3  # unused
 
 # All Referers: http://107.155.100.182:50313/spenefett/fwd?&SessionKey=THEKEY&WebGateRequest=3&RequestOwner=EXTBRM&RequestOwner=EXTBRM
 class ClanWebGateRequest(IntEnum):
     # Provides the WebGateRequest for various API functions, banner, menu, overview, clanid
+    # Query: SessionKey, WebGateRequest, RequestOwner
+    # Post: ogb=true
     GET_DATA = 1  # I named this
-        # Query: SessionKey, WebGateRequest, RequestOwner
-        # Post: ogb=true
+    
+    # Query: SessionKey, WebGateRequest, RequestOwner
+    # Post: ClanID=123
     GET_BANNER = 2 
-        # Query: SessionKey, WebGateRequest, RequestOwner
-        # Post: ClanID=123
+    
+    # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
+    # Post: ClanID=123
     GET_MENU = 3
-        # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
-        # Post: ClanID=123
-    CLAN_OVERVIEW_PAGE = 37
-        # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
-        # Post: id=1 (TODO: why? where does this come from? figure it out)
+    
+    # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
+    # Post: id=1 (no idea why it sends this)    
+    CLAN_OVERVIEW_PAGE = 37    
     
 class JournalWebGateRequest(IntEnum):
     GET_DATA = 1  # nothing useful is here, it just gives the WebGateRequest for the MENU
@@ -177,7 +199,6 @@ class ApiCategory(Enum):
     CLAN = auto()
 
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
-CLANID_REGEX = re.compile(r"^\s*var\s+ClanID\s+=\s+'(\d+)'\s*$", re.MULTILINE)
 JSON_INDENT = 4
 
 class ApiError(Exception):
@@ -270,6 +291,7 @@ class ApiClient(object):
     def clear_session(self):
         self.session_key = None
         self.clan_id = None
+        self.cookie = None
         
     def __init__(self, web_url, session_file=None, mock_set=None, option_set=None):
         self.web_url = web_url
@@ -315,9 +337,9 @@ class ApiClient(object):
                 print(f"Session in file is not valid: {self.session_file}")
         return self.session_key
 
-    def request(self, query=None, form_data=None, mock_name=None, mock_category=None, expect_xml=None):
+    # NOTE: also tracks Set-Cookie for this object
+    def request(self, query=None, form_data=None, headers=None, referer=None, mock_name=None, mock_category=None, expect_xml=None):
         global SCRIPT_DIRECTORY
-        # TODO: headers, referer
         mocking = mock_name and mock_category is not None and mock_category in self.mock_set
         if mocking:
             mock_path = os.path.join(SCRIPT_DIRECTORY, 'mock', mock_category.name.lower(), f"{mock_name.lower()}.mock")
@@ -326,12 +348,26 @@ class ApiClient(object):
         else:
             if ClientOption.FORCE_MOCKING in self.option_set:
                 raise RuntimeError(f"FORCE_MOCKING is set, cannot make actual request: {request_url}")
-            response_content = self.connection.request(
+            # Add any cookie
+            if self.cookie:
+                if headers is None:
+                    headers = {}
+                headers['Cookie'] = self.cookie
+                
+            response_headers, response_content = self.connection.request(
                     url=self.request_root,
                     query=query,
                     form_data=form_data,
+                    headers=headers,
+                    referer=referer,
                     print_request=(ClientOption.PRINT_REQUEST in self.option_set)
-            ).decode('utf-8')
+            )
+            response_content = response_content.decode('utf-8')
+            # update the cookie
+            new_cookie = response_headers.get('Set-Cookie', None)
+            if new_cookie:
+                # Example value(no quotes): 'JSESSIONID=abcdefg; Path=/spenefett; HttpOnly'
+                self.cookie = new_cookie.split(';', 1)[0]
         if mocking:
             print(f"MockedResponse: {mock_path}")
         if ClientOption.PRINT_RESPONSE in self.option_set:
@@ -423,27 +459,50 @@ class ApiClient(object):
             self.clear_session()
         return self.session_key
     
+    def browser_frame_url(self):
+        # the login pages all have an extra & erroneously added to this by
+        # the embedded javascript code.
+        
+        # This is the page that would be loaded at the end of a successful
+        # login in the web.  We don't need any of that information though,
+        # so we only need the URL for the post-login 'Referer' values.
+        query = '&' + urllib.parse.urlencode([
+            ('SessionKey', self.session_key),
+            ('WebGateRequest', LoginWebGateRequest.BROWSER_FRAME.value),
+            ('RequestOwner', RequestOwner.LOGIN.value),
+            ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
+        ])
+        return f"{self.web_url}?{query}"
+        
     def login(self, user_name, password_sha1):
         self.clear_session()  # so if an exception occurs, it is cleared
-        parameters = {
-            'WebGateRequest': '1',
-            'RequestOwner': 'EXTBRM',
-            '_': self.__class__.time_string(),
-            'UserName': user_name,
-        }
+        
+        login_web_url = f"{self.web_url}"   
+        # the login pages all have an extra & erroneously added to this by
+        # the embedded javascript code.
+        query = '&' + urllib.parse.urlencode([
+            ('WebGateRequest', LoginWebGateRequest.CHALLENGE_REQUEST.value),
+            ('RequestOwner', RequestOwner.LOGIN.value),
+            ('_', self.__class__.time_string()),
+            ('UserName', user_name),
+            ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
+        ])
+
         # send initial request to get the RCK salt
-        root_element = self.request(parameters, "challenge", ApiCategory.LOGIN, expect_xml=True)
+        root_element = self.request(query=query, referer=self.web_url, mock_name="challenge", mock_category=ApiCategory.LOGIN, expect_xml=True)
         rck_element = root_element.find('./RCK')
         rck = rck_element.text if (rck_element is not None) else None
         if rck:
             salted_password_sha1 = hashlib.sha1((password_sha1.upper() + rck).encode('ascii')).hexdigest().upper()
-            parameters.update({
-                'WebGateRequest': '2',
-                '_': self.__class__.time_string(),
-                'Password': salted_password_sha1
-            })
+            query = '&' + urllib.parse.urlencode([
+                ('WebGateRequest', LoginWebGateRequest.CHALLENGE_RESPONSE.value),
+                ('_', self.__class__.time_string()),
+                ('Password', salted_password_sha1),
+                ('UserName', user_name),
+                ('RequestOwner', RequestOwner.LOGIN.value),
+            ])
             # send the salted password to get the SessionKey
-            root_element = self.request(parameters, "success", ApiCategory.LOGIN, expect_xml=True)
+            root_element = self.request(query=query, referer=self.web_url, mock_name="success", mock_category=ApiCategory.LOGIN, expect_xml=True)
             session_key_element = root_element.find('./SessionKey')
             session_key = session_key_element.text if (session_key_element is not None) else None
             
@@ -456,16 +515,20 @@ class ApiClient(object):
         return self.session_key
 
     def update_clan_id(self):
-        global CLANID_REGEX
         self.clan_id = None  # so if an exception occurs, it is cleared
-        parameters = {
-            'WebGateRequest': '1',
-            'RequestOwner': 'QETUO',
-            'SessionKey': self.session_key
-        }
-        response = self.request(parameters, "clan", ApiCategory.LOGIN, expect_xml=False)
-        match = CLANID_REGEX.search(response)
-        self.clan_id = CLANID_REGEX.search(response).group(1) if match else None
+        query = [
+            ('SessionKey', self.session_key),
+            ('WebGateRequest', ClanWebGateRequest.GET_DATA.value),
+            ('RequestOwner', RequestOwner.CLAN.value),
+        ]
+        form_data = [('ogb', 'true')]
+        # NOTE: if this isn't sent as a post with the Content-Type 'application/x-www-form-urlencoded; charset=utf-8'
+        # the response is some page w/ javascript instead of the nice xml output... the code covers this internally
+        # but this is worth mentioning.
+        root_element = self.request(query=query, form_data=form_data, referer=self.browser_frame_url(), mock_name="clan", mock_category=ApiCategory.LOGIN, expect_xml=True)
+        clan_id_element = root_element.find('./ClanID')
+        self.clan_id = clan_id_element.text if (clan_id_element is not None) else None
+        
         if ClientOption.PRINT_CLANID in self.option_set:
             print(f"ClanID: {self.clan_id}")
         return self.clan_id
@@ -477,7 +540,15 @@ class ApiClient(object):
             'RequestOwner': 'QETUO',
             'SessionKey': self.session_key
         }
-        root_element = self.request(parameters, "overview", ApiCategory.CLAN, expect_xml=True)
+        query = [
+            ('SessionKey', self.session_key),
+            ('ClanID', self.clan_id),
+            ('WebGateRequest', ClanWebGateRequest.CLAN_OVERVIEW_PAGE.value),
+            ('RequestOwner', RequestOwner.CLAN.value),
+        ]
+        # No idea why this value is sent, and the request works without it.
+        form_data = [('id', '1')]  # Specified to match client behavior.  
+        root_element = self.request(query=query, form_data=form_data, mock_name="overview", mock_category=ApiCategory.CLAN, expect_xml=True)
         # there is a df123133 (random numbers) intermediary tag, hence the //
         overview_element = root_element.find('.//ObjectData/OverviewNode')
         if overview_element is None:
