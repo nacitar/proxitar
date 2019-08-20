@@ -10,7 +10,6 @@ import hashlib
 import xml.etree.ElementTree as ET
 from enum import Enum, auto, IntEnum
 from collections import deque
-# they have an extra & here in their code"/spenefett/fwd?&SessionKey= 
 
 def api_parse_url(url):
     parsed_url = urllib.parse.urlparse(url)
@@ -26,7 +25,6 @@ def api_parse_url(url):
     host = parts[0]
     return (parsed_url, host, port)
 
-# Referer: http://107.155.100.182:50313/spenefett/fwd?&SessionKey=KEYHERE&WebGateRequest=3&RequestOwner=EXTBRM&RequestOwner=EXTBRM
 def api_http_request(url, query=None, form_data=None, headers=None, referer=None, connection=None, print_request=False):
     if query and not isinstance(query, str):
         encoded_query = urllib.parse.urlencode(query)
@@ -40,25 +38,16 @@ def api_http_request(url, query=None, form_data=None, headers=None, referer=None
     else:
         persistent = True
     if form_data and not isinstance(form_data, str):
-        # allow for some flexibility here
         form_data = urllib.parse.urlencode(form_data)
     if headers is None:
         headers = {}
     headers.update({
         # look like chrome
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36',
-        
-        # Only when loading the LoginWebGateRequest.BROWSER_FRAME
-        #'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
-        
         'Accept': 'application/xml, text/xml, */*',
-        'Accept-Encoding': 'gzip, deflate',  # not for main page/browser_frame
+        'Accept-Encoding': 'gzip, deflate',
         'Accept-Language': 'en-US,en;q=0.9',
-        'X-Requested-With': 'XMLHttpRequest'  # not for main page/browser_frame
-        
-        
-        # Only on main page load
-        #'Cache-Control:': 'max-age=0'
+        'X-Requested-With': 'XMLHttpRequest'
     })
     if persistent:
         headers['Connection'] = 'keep-alive'
@@ -107,13 +96,11 @@ class ApiHttpConnection(object):
             self.connection.close()
             self.connection = None
 
-# after logging out, has old session key http://107.155.100.182:50313/spenefett/fwd?SessionKey=OLDKEYHERE
 # http://107.155.100.182:50313/spenefett/fwd for frame request
 # base url itself gives login page, with javascript with the WebGateRequest/RequestOwner for the challenge request
 # - no referer
 class RequestOwner(Enum):
-    # Main login page: no querystring, header {'Cache-Control:': 'max-age=0'}
-    # Request order: main page (no query), challenge request, challenge response, browser frame
+    # Request order: challenge request, challenge response, browser frame
     LOGIN = 'EXTBRM'
     
     # Request order: get data, get banner, get menu, clan overview page
@@ -130,15 +117,14 @@ class LoginWebGateRequest(IntEnum):
     # Referer: http://107.155.100.182:50313/spenefett/fwd    
     CHALLENGE_RESPONSE = 2
 
-    # The outer page with the framed navigation panel providing
-    # the clan/journal tabs.
-    # In javascript has the values for RequestOwner and main WebGateRequest for Clan and Journal tabs
-    # Query: extra & SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
-    # referer: http://107.155.100.182:50313/spenefett/fwd
+    # The outer page with the framed navigation panel providing the clan/journal tabs.
+    # Has javascript with the RequestOwner and main WebGateRequest for the Clan and Journal tabs
+    # Query: extra &, SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
+    # Referer: http://107.155.100.182:50313/spenefett/fwd
     # This URL is the referer for everything other than login requests.
     BROWSER_FRAME = 3  # unused
 
-# All Referers: http://107.155.100.182:50313/spenefett/fwd?&SessionKey=THEKEY&WebGateRequest=3&RequestOwner=EXTBRM&RequestOwner=EXTBRM
+# All Referers: 
 class ClanWebGateRequest(IntEnum):
     # Provides the WebGateRequest for various API functions, banner, menu, overview, clanid
     # Query: SessionKey, WebGateRequest, RequestOwner
@@ -151,15 +137,11 @@ class ClanWebGateRequest(IntEnum):
     
     # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
     # Post: ClanID=123
-    GET_MENU = 3
+    GET_MENU = 3 # unused
     
     # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
-    # Post: id=1 (no idea why it sends this)    
-    CLAN_OVERVIEW_PAGE = 37    
-    
-class JournalWebGateRequest(IntEnum):
-    GET_DATA = 1  # nothing useful is here, it just gives the WebGateRequest for the MENU
-    MENU = 2
+    # Post: id=1 (no idea why it sends this)
+    CLAN_OVERVIEW_PAGE = 37
     
 class NewsReelFilter(IntEnum):
     BINDS = 0
@@ -205,10 +187,10 @@ class ApiError(Exception):
 class ApiClient(object):
     """ Connects to the server and manages the session. """
     
+    # TODO: rename this method
     @staticmethod
     def element_to_flat_dict(element):
         result = {}
-        # the queue is modified during iteration, so, we must use indexes instead of a foreach
         queue = deque([(None, list(element))])
         while len(queue):
             prefix, children = queue.popleft()
@@ -455,12 +437,11 @@ class ApiClient(object):
         return self.session_key
     
     def browser_frame_url(self):
-        # the login pages all have an extra & erroneously added to this by
-        # the embedded javascript code.
-        
         # This is the page that would be loaded at the end of a successful
         # login in the web.  We don't need any of that information though,
         # so we only need the URL for the post-login 'Referer' values.
+        # The login pages all have an extra & erroneously added to this by
+        # the embedded javascript code.
         query = '&' + urllib.parse.urlencode([
             ('SessionKey', self.session_key),
             ('WebGateRequest', LoginWebGateRequest.BROWSER_FRAME.value),
@@ -471,9 +452,8 @@ class ApiClient(object):
         
     def login(self, user_name, password_sha1):
         self.clear_session()  # so if an exception occurs, it is cleared
-        
         login_web_url = f"{self.web_url}"   
-        # the login pages all have an extra & erroneously added to this by
+        # The login pages all have an extra & erroneously added to this by
         # the embedded javascript code.
         query = '&' + urllib.parse.urlencode([
             ('WebGateRequest', LoginWebGateRequest.CHALLENGE_REQUEST.value),
@@ -482,7 +462,6 @@ class ApiClient(object):
             ('UserName', user_name),
             ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
         ])
-
         # send initial request to get the RCK salt
         root_element = self.request(query=query, referer=self.web_url, mock_name="challenge", mock_category=ApiCategory.LOGIN, expect_xml=True)
         rck_element = root_element.find('./RCK')
@@ -523,7 +502,6 @@ class ApiClient(object):
         root_element = self.request(query=query, form_data=form_data, referer=self.browser_frame_url(), mock_name="clan", mock_category=ApiCategory.LOGIN, expect_xml=True)
         clan_id_element = root_element.find('./ClanID')
         self.clan_id = clan_id_element.text if (clan_id_element is not None) else None
-        
         if ClientOption.PRINT_CLANID in self.option_set:
             print(f"ClanID: {self.clan_id}")
         return self.clan_id
