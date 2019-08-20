@@ -96,9 +96,6 @@ class ApiHttpConnection(object):
             self.connection.close()
             self.connection = None
 
-# http://107.155.100.182:50313/spenefett/fwd for frame request
-# base url itself gives login page, with javascript with the WebGateRequest/RequestOwner for the challenge request
-# - no referer
 class RequestOwner(Enum):
     # Request order: challenge request, challenge response, browser frame
     LOGIN = 'EXTBRM'
@@ -205,6 +202,7 @@ class ApiClient(object):
                 else:
                     result[key] = child_element.text
         return result
+    
     @staticmethod
     def decode(data):
         output = ''
@@ -479,7 +477,6 @@ class ApiClient(object):
             root_element = self.request(query=query, referer=self.web_url, mock_name="success", mock_category=ApiCategory.LOGIN, expect_xml=True)
             session_key_element = root_element.find('./SessionKey')
             session_key = session_key_element.text if (session_key_element is not None) else None
-            
             self.session_key = session_key
             if self.update_clan_id():
                 if ClientOption.PRINT_SESSION in self.option_set:
@@ -487,7 +484,7 @@ class ApiClient(object):
             else:
                 self.clear_session()
         return self.session_key
-
+    
     def update_clan_id(self):
         self.clan_id = None  # so if an exception occurs, it is cleared
         query = [
@@ -506,22 +503,38 @@ class ApiClient(object):
             print(f"ClanID: {self.clan_id}")
         return self.clan_id
     
+    def get_clan_name(self):
+        web_gate_request = ClanWebGateRequest.GET_BANNER
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('WebGateRequest', web_gate_request.value),
+                ('RequestOwner', RequestOwner.CLAN.value)
+            ],
+            form_data=[('ClanID', self.clan_id)],
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.CLAN,
+            expect_xml=True
+        )
+        clan_name_element = root_element.find('./ClanBannerNode/ClanName')
+        if clan_name_element is None:
+            return None
+        return clan_name_element.text
+    
     def get_clan_overview(self):
-        parameters = {
-            'ClanID': self.clan_id,
-            'WebGateRequest': '37',
-            'RequestOwner': 'QETUO',
-            'SessionKey': self.session_key
-        }
-        query = [
-            ('SessionKey', self.session_key),
-            ('ClanID', self.clan_id),
-            ('WebGateRequest', ClanWebGateRequest.CLAN_OVERVIEW_PAGE.value),
-            ('RequestOwner', RequestOwner.CLAN.value),
-        ]
-        # No idea why this value is sent, and the request works without it.
-        form_data = [('id', '1')]  # Specified to match client behavior.  
-        root_element = self.request(query=query, form_data=form_data, mock_name="overview", mock_category=ApiCategory.CLAN, expect_xml=True)
+        web_gate_request = ClanWebGateRequest.CLAN_OVERVIEW_PAGE
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('ClanID', self.clan_id),
+                ('WebGateRequest', web_gate_request.value),
+                ('RequestOwner', RequestOwner.CLAN.value)
+            ],
+            form_data=[('id', '1')],  # Specified to match client behavior; no idea why this is sent.
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.CLAN,
+            expect_xml=True
+        )
         # there is a df123133 (random numbers) intermediary tag, hence the //
         overview_element = root_element.find('.//ObjectData/OverviewNode')
         if overview_element is None:
