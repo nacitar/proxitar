@@ -11,6 +11,83 @@ import xml.etree.ElementTree as ET
 from enum import Enum, auto, IntEnum
 from collections import deque
 
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+JSON_INDENT = 4
+
+class RequestOwner(Enum):
+    # Request order: challenge request, challenge response, browser frame
+    LOGIN = 'EXTBRM'
+    # Request order: get data, get banner, get menu, clan overview page
+    CLAN = 'QETUO'
+    JOURNAL = 'WRYIP'  # unused
+    
+class LoginWebGateRequest(IntEnum):
+    # Query: extra &, WebGateRequest, RequestOwner, _, UserName, RequestOwner (again)
+    # Referer: http://107.155.100.182:50313/spenefett/fwd
+    CHALLENGE_REQUEST = 1
+    # Query: extra &, WebGateRequest, _, Password, UserName, RequestOwner
+    # Referer: http://107.155.100.182:50313/spenefett/fwd    
+    CHALLENGE_RESPONSE = 2
+    # The outer page with the framed navigation panel providing the clan/journal tabs.
+    # Has javascript with the RequestOwner and main WebGateRequest for the Clan and Journal tabs
+    # Query: extra &, SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
+    # Referer: http://107.155.100.182:50313/spenefett/fwd
+    # This URL is the referer for everything other than login requests.
+    BROWSER_FRAME = 3  # unused
+
+# All Referers: the url for LoginWebGateRequest.BROWSER_FRAME
+class ClanWebGateRequest(IntEnum):
+    # Provides the WebGateRequest for various API functions, banner, menu, overview, clanid
+    # Query: SessionKey, WebGateRequest, RequestOwner
+    # Post: ogb=true
+    GET_DATA = 1  # I named this
+    # Query: SessionKey, WebGateRequest, RequestOwner
+    # Post: ClanID=123
+    GET_BANNER = 2 
+    # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
+    # Post: ClanID=123
+    GET_MENU = 3 # unused
+    # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
+    # Post: id=1 (no idea why it sends this)
+    CLAN_OVERVIEW_PAGE = 37
+
+# assembles as colon delimited sorted numbers    
+class NewsReelFilter(IntEnum):
+    BINDS = 0  # unused
+    PROXIMITY = 1
+    CONNECTIONS = 2  # unused
+    POLITICS = 3  # unused
+    RANKS = 4  # unused
+    STRUCTURES = 5  # unused
+    RESOURCES = 6
+    WORKSTATIONS = 7  # unused
+    MEMBERS = 8  # unused
+    CONTROL_POINTS = 9  # unused
+    FORTRESSES = 10  # unused
+    MISC = 11  # unused
+    
+class TimeFilter(IntEnum):
+    ONE_DAY = 0,
+    THREE_DAYS = 1,
+    SEVEN_DAYS = 2
+
+class ClientOption(Enum):
+    PRINT_REQUEST = auto()
+    PRINT_RESPONSE = auto()
+    PRINT_APIERROR = auto()
+    PRINT_SESSION = auto()
+    PRINT_CLANID = auto()
+    MOCKING_ONLY = auto()
+    WRITE_MISSING_MOCKS = auto()
+
+class ApiCategory(Enum):
+    LOGIN = auto()
+    ERROR = auto()
+    CLAN = auto()
+
+class ApiError(Exception):
+    pass
+
 def api_parse_url(url):
     parsed_url = urllib.parse.urlparse(url)
     if parsed_url.query:
@@ -53,14 +130,12 @@ def api_http_request(url, query=None, form_data=None, headers=None, referer=None
         headers['Connection'] = 'keep-alive'
     if referer is not None:
         headers['Referer'] = referer
-        
     if form_data is not None:
         method = 'POST'
         headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8'
         headers['Origin'] = f"{parsed_url.scheme}://{parsed_url.netloc}"
     else:
         method = 'GET'
-    
     if encoded_query:
         request_url = f"{url}?{encoded_query}"
     else:
@@ -71,7 +146,6 @@ def api_http_request(url, query=None, form_data=None, headers=None, referer=None
     connection.request(method=method, url=request_url, headers=headers, body=form_data)
     response_object = connection.getresponse()
     response = response_object.read()
-    
     if not persistent:
         connection.close()
     return (dict(response_object.headers), response)
@@ -96,90 +170,7 @@ class ApiHttpConnection(object):
             self.connection.close()
             self.connection = None
 
-class RequestOwner(Enum):
-    # Request order: challenge request, challenge response, browser frame
-    LOGIN = 'EXTBRM'
-    
-    # Request order: get data, get banner, get menu, clan overview page
-    CLAN = 'QETUO'
-        
-    JOURNAL = 'WRYIP'  # unused
-    
-class LoginWebGateRequest(IntEnum):
-    # Query: extra &, WebGateRequest, RequestOwner, _, UserName, RequestOwner (again)
-    # Referer: http://107.155.100.182:50313/spenefett/fwd
-    CHALLENGE_REQUEST = 1
-    
-    # Query: extra &, WebGateRequest, _, Password, UserName, RequestOwner
-    # Referer: http://107.155.100.182:50313/spenefett/fwd    
-    CHALLENGE_RESPONSE = 2
-
-    # The outer page with the framed navigation panel providing the clan/journal tabs.
-    # Has javascript with the RequestOwner and main WebGateRequest for the Clan and Journal tabs
-    # Query: extra &, SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
-    # Referer: http://107.155.100.182:50313/spenefett/fwd
-    # This URL is the referer for everything other than login requests.
-    BROWSER_FRAME = 3  # unused
-
-# All Referers: 
-class ClanWebGateRequest(IntEnum):
-    # Provides the WebGateRequest for various API functions, banner, menu, overview, clanid
-    # Query: SessionKey, WebGateRequest, RequestOwner
-    # Post: ogb=true
-    GET_DATA = 1  # I named this
-    
-    # Query: SessionKey, WebGateRequest, RequestOwner
-    # Post: ClanID=123
-    GET_BANNER = 2 
-    
-    # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
-    # Post: ClanID=123
-    GET_MENU = 3 # unused
-    
-    # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
-    # Post: id=1 (no idea why it sends this)
-    CLAN_OVERVIEW_PAGE = 37
-    
-class NewsReelFilter(IntEnum):
-    BINDS = 0
-    PROXIMITY = 1
-    CONNECTIONS = 2
-    POLITICS = 3
-    RANKS = 4
-    STRUCTURES = 5
-    RESOURCES = 6
-    WORKSTATIONS = 7
-    MEMBERS = 8
-    CONTROL_POINTS = 9
-    FORTRESSES = 10
-    MISC = 11
-# assembles as colon delimited sorted numbers
-    
-class TimeFilter(IntEnum):
-    ONE_DAY = 0,
-    THREE_DAYS = 1,
-    SEVEN_DAYS = 2
-
-class ClientOption(Enum):
-    PRINT_REQUEST = auto()
-    PRINT_RESPONSE = auto()
-    PRINT_APIERROR = auto()
-    PRINT_SESSION = auto()
-    PRINT_CLANID = auto()
-    FORCE_MOCKING = auto()
-
-class ApiCategory(Enum):
-    LOGIN = auto()
-    ERROR = auto()
-    CLAN = auto()
-
-SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
-JSON_INDENT = 4
-
-class ApiError(Exception):
-    pass
-
-# TODO: consider _requiring_ mock_name, consider writing out missing mocks
+# TODO: consider _requiring_ mock_name
 # TODO: reorder class methods?
 class ApiClient(object):
     """ Connects to the server and manages the session. """
@@ -290,10 +281,15 @@ class ApiClient(object):
     
     def connect(self):
         self.disconnect()
-        parsed_url, host, port = api_parse_url(self.web_url)
-        self.connection = ApiHttpConnection()
-        self.connection.connect(host, port)
+        # if mocking only, skip connecting... it would be pointless.
+        if ClientOption.MOCKING_ONLY not in self.option_set:
+            parsed_url, host, port = api_parse_url(self.web_url)
+            self.connection = ApiHttpConnection()
+            self.connection.connect(host, port)
+        else:
+            print('Skipping connection request because MOCKING_ONLY is set.')
         return self.connection
+        
 
     def load_session(self):
         try:
@@ -311,24 +307,52 @@ class ApiClient(object):
             if ClientOption.PRINT_SESSION in self.option_set:
                 print(f"Session in file is not valid: {self.session_file}")
         return self.session_key
+    
 
+    @staticmethod
+    def get_mock_filename(mock_name, mock_category, level=0):
+        global SCRIPT_DIRECTORY
+        mock_dir = os.path.join(SCRIPT_DIRECTORY, 'mock', mock_category.name.lower())
+        mock_path = os.path.join(mock_dir, f"{mock_name.lower()}.mock")
+        if level > 0:
+            mock_path += '.decoded'
+            if level > 1:
+                mock_path += f".{level}"
+        return mock_path
+    @staticmethod
+    def write_missing_mock_file(mock_name, mock_category, data, level=0):
+        mock_path = ApiClient.get_mock_filename(mock_name, mock_category, level)
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        if not os.path.exists(mock_path):
+            mock_dir = os.path.dirname(mock_path)
+            if not os.path.exists(mock_dir):
+                os.makedirs(mock_dir)
+            with open(mock_path, 'wb') as mock_file:
+                mock_file.write(data)
+            return True
+        return False
+    @staticmethod
+    def get_mock_response(mock_name, mock_category, level=0):
+        mock_path = ApiClient.get_mock_filename(mock_name, mock_category, level)
+        print(f"MockedResponse: {mock_path}")
+        # will raise an exception if it doesn't exist
+        with open(mock_path, 'rb') as response:
+            response_content = response.read().decode('utf-8')
+        return response_content
     # NOTE: also tracks Set-Cookie for this object
     def request(self, query=None, form_data=None, headers=None, referer=None, mock_name=None, mock_category=None, expect_xml=None):
         global SCRIPT_DIRECTORY
-        mocking = mock_name and mock_category is not None and mock_category in self.mock_set
-        if mocking:
-            mock_path = os.path.join(SCRIPT_DIRECTORY, 'mock', mock_category.name.lower(), f"{mock_name.lower()}.mock")
-            with open(mock_path, 'rb') as response:
-                response_content = response.read().decode('utf-8')
+        if mock_name and mock_category is not None and mock_category in self.mock_set:
+            response_content = self.__class__.get_mock_response(mock_name, mock_category)
         else:
-            if ClientOption.FORCE_MOCKING in self.option_set:
-                raise RuntimeError(f"FORCE_MOCKING is set, cannot make actual request: {request_url}")
+            if ClientOption.MOCKING_ONLY in self.option_set:
+                raise RuntimeError(f"MOCKING_ONLY is set, cannot make actual request: {request_url}")
             # Add any cookie
             if self.cookie:
                 if headers is None:
                     headers = {}
                 headers['Cookie'] = self.cookie
-                
             response_headers, response_content = self.connection.request(
                     url=self.web_url,
                     query=query,
@@ -337,18 +361,21 @@ class ApiClient(object):
                     referer=referer,
                     print_request=(ClientOption.PRINT_REQUEST in self.option_set)
             )
+            # write missing mocks, if necessary
+            # needs the bytes type response, so do this before decoding
+            if ClientOption.WRITE_MISSING_MOCKS in self.option_set:
+                self.__class__.write_missing_mock_file(mock_name, mock_category, response_content)
             response_content = response_content.decode('utf-8')
             # update the cookie
             new_cookie = response_headers.get('Set-Cookie', None)
             if new_cookie:
                 # Example value(no quotes): 'JSESSIONID=abcdefg; Path=/spenefett; HttpOnly'
                 self.cookie = new_cookie.split(';', 1)[0]
-        if mocking:
-            print(f"MockedResponse: {mock_path}")
         if ClientOption.PRINT_RESPONSE in self.option_set:
             print(f"Response: {response_content}")
         # at this point, we have the response, but we need to see if it is xml
         # and if so, pull some things out of it
+        level = 1
         while True:
             # this loop only reruns if the 'continue' occurs; otherwise it returns at the end.
             try:
@@ -376,6 +403,9 @@ class ApiClient(object):
                     return root_element
                 # encoded page
                 response_content = self.__class__.decode(data_element.text)
+                # Write the extra decoded versions for mocks too, for convenience.
+                if ClientOption.WRITE_MISSING_MOCKS in self.option_set:
+                    self.__class__.write_missing_mock_file(mock_name, mock_category, response_content, level)
                 if ClientOption.PRINT_RESPONSE in self.option_set:
                     print(f"Decoded Response: {response_content}")
                 # the decoded message can itself be (and afaik always is) xml, so, a
