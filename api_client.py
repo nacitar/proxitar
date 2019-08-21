@@ -50,6 +50,11 @@ class ClanWebGateRequest(IntEnum):
     # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
     # Post: id=1 (no idea why it sends this)
     CLAN_OVERVIEW_PAGE = 37
+    # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
+    # Post: NewsReelFilter, TimeFilter, odo=true
+    # Subsequent posts also add: GridCurrentStartRow, GridCurrentPageRows, GridCurrentPage
+    # Initial load Post: id=1 (no idea why it sends this)
+    NEWS_REEL = 54
 
 # assembles as colon delimited sorted numbers    
 class NewsReelFilter(IntEnum):
@@ -76,7 +81,8 @@ class ClientOption(Enum):
     PRINT_RESPONSE = auto()
     PRINT_APIERROR = auto()
     PRINT_SESSION = auto()
-    PRINT_CLANID = auto()
+    PRINT_CLAN_ID = auto()
+    PRINT_NEWS_REEL = auto()
     MOCKING_ONLY = auto()
     WRITE_MISSING_MOCKS = auto()
 
@@ -545,8 +551,8 @@ class ApiClient(object):
         )
         clan_id_element = root_element.find('./ClanID')
         self.clan_id = clan_id_element.text if (clan_id_element is not None) else None
-        if ClientOption.PRINT_CLANID in self.option_set:
-            print(f"ClanID: {self.clan_id}")
+        if ClientOption.PRINT_CLAN_ID in self.option_set:
+            print(f"Clan ID: {self.clan_id}")
         return self.clan_id
     
     def get_clan_name(self):
@@ -587,3 +593,67 @@ class ApiClient(object):
         if overview_element is None:
             raise ApiError('Overview response lacked OverviewNode.')
         return self.__class__.element_to_flat_dict(overview_element)
+
+    def get_news_reel(self, news_reel_filter, time_filter):
+        raise RuntimeError('Not finished yet')
+        if isinstance(news_reel_filter, NewsReelFilter):
+            news_reel_filter_value = str(news_reel_filter)
+        else:
+            news_reel_filter_value = ':'.join([str(entry.value) for entry in sorted(news_reel_filter)])
+        
+        common_form_data = [
+            ('NewsReelFilter', news_reel_filter_value),
+            ('TimeFilter', time_filter.value),
+            ('odo', 'true')  # Specified to match client behavior; no idea why this is sent.
+        ]
+        
+        form_data = list(common_form_data)
+        
+        page = 1
+        # Loads all the pages, in sequence, until done..
+        # TODO: need this to work differently so we don't spam the server like crazy
+        while True:
+            web_gate_request = ClanWebGateRequest.NEWS_REEL
+            root_element = self.request(
+                query=[
+                    ('SessionKey', self.session_key),
+                    ('ClanID', self.clan_id),
+                    ('WebGateRequest', web_gate_request.value),
+                    ('RequestOwner', RequestOwner.CLAN.value)
+                ],
+                form_data=form_data,
+                mock_name=web_gate_request.name.lower(),
+                mock_category=ApiCategory.CLAN,
+                expect_xml=True
+            )
+            if ClientOption.PRINT_NEWS_REEL in self.option_set:
+                print(f"Loaded news reel page {page}")
+            page += 1
+            
+            start_row_element = root_element.find('.//ObjectData/GridCurrentStartRow')
+            if start_row_element is None:
+                raise ApiError('No GridCurrentStartRow')
+            row_per_page_element = root_element.find('.//ObjectData/GridRowPerPage')
+            if row_per_page_element is None:
+                raise ApiError('No GridRowPerPage')
+            current_page_rows_element = root_element.find('.//ObjectData/GridCurrentPageRows')
+            if current_page_rows_element is None:
+                raise ApiError('No GridCurrentPageRows')
+            total_rows_element = root_element.find('.//ObjectData/GridTotalRows')
+            if total_rows_element is None:
+                raise ApiError('No GridTotalRows')
+            start_row = int(start_row_element.text)
+            page_row_count = int(current_page_rows_element.text)
+            
+            form_data = list(common_form_data)
+            form_data.extend([
+                ('GridCurrentStartRow', start_row),
+                ('GridCurrentPageRows', page_row_count),
+                ('GridCurrentPage', page)  # actually the page you want to go to, not 'current'
+            ])
+            if (start_row + page_row_count) > int(total_rows_element.text):
+                # No more pages
+                break
+        #if overview_element is None:
+        #    raise ApiError('Overview response lacked OverviewNode.')
+        return "DONE"
