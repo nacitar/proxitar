@@ -128,7 +128,7 @@ class ApiHttpConnection(object):
             path = self.default_path
         if query is None:
             query = self.default_query
-        elif isinstance(query, str):
+        if isinstance(query, str):
             encoded_query = query
         else:
             encoded_query = urllib.parse.urlencode(query)
