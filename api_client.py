@@ -95,47 +95,43 @@ class ApiCategory(Enum):
 class ApiError(Exception):
     pass
 
-def api_parse_url(url):
-    parsed_url = urllib.parse.urlparse(url)
-    if parsed_url.query:
-        raise ValueError('Query string not allowed in the url.')
-    if parsed_url.scheme != 'http':
-        raise ValueError('Url is not using http scheme.')
-    parts = parsed_url.netloc.split(':', 1)
-    if len(parts) == 2:
-        port = parts[1]
-    else:
-        port = 80
-    host = parts[0]
-    return (parsed_url, host, port)
-
 class ApiHttpConnection(object):
     def __init__(self):
         self.connection = None
         self.host = None
         self.port = None
+        self.default_path = None
+        self.default_query = None
         
-    def connect(self, host, port):
-        self.host = host
-        self.port = port
+    def connect(self, url):
+        parsed_url = urllib.parse.urlparse(url)
+        if parsed_url.scheme != 'http':
+            raise ValueError('Url is not using http scheme.')
+        self.default_path = parsed_url.path if parsed_url.path else None
+        self.default_query = parsed_url.query if parsed_url.query else None
+        self.origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        parts = parsed_url.netloc.split(':', 1)
+        self.host = parts[0]
+        self.port = int(parts[1]) if (len(parts) == 2) else 80
         self.reconnect()
-        return self.connection
-        
+
     def reconnect(self):
         self.close()
         self.connection = http.client.HTTPConnection(self.host, self.port)
         print("Socket (re)connected.")
         return self.connection
         
-    def request(self, url, query=None, form_data=None, headers=None, referer=None, print_request=False):
+    def request(self, path=None, query=None, form_data=None, headers=None, referer=None, print_request=False):
         if self.connection is None:
             raise RuntimeError('No connection.  Did you forget to call connect()?')
-        if query and not isinstance(query, str):
-            encoded_query = urllib.parse.urlencode(query)
-        else:
+        if path is None:
+            path = self.default_path
+        if query is None:
+            query = self.default_query
+        elif isinstance(query, str):
             encoded_query = query
-        parsed_url, host, port = api_parse_url(url)
-        url = parsed_url.path
+        else:
+            encoded_query = urllib.parse.urlencode(query)
         if headers is None:
             headers = {}
         headers.update({
@@ -154,16 +150,16 @@ class ApiHttpConnection(object):
                 form_data = urllib.parse.urlencode(form_data)
             method = 'POST'
             headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8'
-            headers['Origin'] = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            headers['Origin'] = self.origin
         else:
             method = 'GET'
         if encoded_query:
-            request_url = f"{url}?{encoded_query}"
+            url = f"{path}?{encoded_query}"
         else:
-            request_url = url
+            url = path
         new_connection = False
         while True:
-            self.connection.request(method=method, url=request_url, headers=headers, body=form_data)
+            self.connection.request(method=method, url=url, headers=headers, body=form_data)
             try:
                 response_object = self.connection.getresponse()
             except http.client.RemoteDisconnected as e:
@@ -176,7 +172,7 @@ class ApiHttpConnection(object):
             break  # it worked!
         # printing the request after the reconnection so the logging order makes more sense
         if print_request:
-            print(f"Request: {request_url}")
+            print(f"Url: {url}")
             print(f"Post data: {form_data}")
         response = response_object.read()
         return (dict(response_object.headers), response)
@@ -299,9 +295,8 @@ class ApiClient(object):
         self.disconnect()
         # if mocking only, skip connecting... it would be pointless.
         if ClientOption.MOCKING_ONLY not in self.option_set:
-            parsed_url, host, port = api_parse_url(self.web_url)
             self.connection = ApiHttpConnection()
-            self.connection.connect(host, port)
+            self.connection.connect(self.web_url)
         else:
             print('Skipping connection request because MOCKING_ONLY is set.')
         return self.connection
@@ -370,7 +365,7 @@ class ApiClient(object):
                     headers = {}
                 headers['Cookie'] = self.cookie
             response_headers, response_content = self.connection.request(
-                    url=self.web_url,
+                    # use the default path
                     query=query,
                     form_data=form_data,
                     headers=headers,
