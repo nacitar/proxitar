@@ -120,18 +120,29 @@ class ApiHttpConnection(object):
         self.connection = http.client.HTTPConnection(self.host, self.port)
         print("Socket (re)connected.")
         return self.connection
-        
-    def request(self, path=None, query=None, form_data=None, headers=None, referer=None, print_request=False):
-        if self.connection is None:
-            raise RuntimeError('No connection.  Did you forget to call connect()?')
+    
+    def _get_url(self, path=None, query=None):
         if path is None:
             path = self.default_path
         if query is None:
             query = self.default_query
+        encoded_query = None
         if isinstance(query, str):
             encoded_query = query
-        else:
+        elif query is not None:
             encoded_query = urllib.parse.urlencode(query)
+        if encoded_query:
+            return f"{path}?{encoded_query}"
+        return path
+    
+    def get_request_url(self, path=None, query=None):
+        path_query = self._get_url(path=path, query=query)
+        return f"{self.origin}{path_query}"
+        
+    def request(self, path=None, query=None, form_data=None, headers=None, referer=None, print_request=False):
+        if self.connection is None:
+            raise RuntimeError('No connection.  Did you forget to call connect()?')
+        url = self._get_url(path, query)
         if headers is None:
             headers = {}
         headers.update({
@@ -153,10 +164,6 @@ class ApiHttpConnection(object):
             headers['Origin'] = self.origin
         else:
             method = 'GET'
-        if encoded_query:
-            url = f"{path}?{encoded_query}"
-        else:
-            url = path
         new_connection = False
         while True:
             self.connection.request(method=method, url=url, headers=headers, body=form_data)
@@ -475,6 +482,9 @@ class ApiClient(object):
             self.clear_session()
         return self.session_key
     
+    def default_url(self):
+        return self.connection.get_request_url()
+        
     def browser_frame_url(self):
         # This is the page that would be loaded at the end of a successful
         # login in the web.  We don't need any of that information though,
@@ -487,7 +497,7 @@ class ApiClient(object):
             ('RequestOwner', RequestOwner.LOGIN.value),
             ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
         ])
-        return f"{self.web_url}?{query}"
+        return self.connection.get_request_url(query=query)
         
     def login(self, user_name, password_sha1):
         # The login pages all have an extra & erroneously added to the query
@@ -504,7 +514,7 @@ class ApiClient(object):
                 ('UserName', user_name),
                 ('RequestOwner', request_owner.value)  # Specified again to match client behavior.
             ]),
-            referer=self.web_url,
+            referer=self.default_url(),
             mock_name=web_gate_request.name.lower(),
             mock_category=ApiCategory.LOGIN,
             expect_xml=True
@@ -523,7 +533,7 @@ class ApiClient(object):
                     ('UserName', user_name),
                     ('RequestOwner', request_owner.value),
                 ]),
-                referer=self.web_url,
+                referer=self.default_url(),
                 mock_name=web_gate_request.name.lower(),
                 mock_category=ApiCategory.LOGIN,
                 expect_xml=True)
