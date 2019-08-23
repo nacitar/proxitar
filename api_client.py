@@ -10,9 +10,13 @@ import hashlib
 import xml.etree.ElementTree as ET
 from enum import Enum, auto, IntEnum
 from collections import deque
+from datetime import datetime
 
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 JSON_INDENT = 4
+# If we need to get multiple pages of newsreel data in order to
+# become current, this is how long to wait between page requests.
+NEWS_REEL_MULTIPAGE_DELAY_SECONDS = 1
 
 class RequestOwner(Enum):
     # Request order: challenge request, challenge response, browser frame
@@ -603,29 +607,27 @@ class ApiClient(object):
             raise ApiError('Overview response lacked OverviewNode.')
         return self.__class__.element_to_flat_dict(overview_element)
 
-    # TODO: limit it with a timestamp of some kind?
-    # TODO: parse the timestamp in the file
-    def get_news_reel(self, news_reel_filter, time_filter):
-        raise RuntimeError('Not finished yet')
+    # When new messages arrive, they arrive on the first page, pushing older entries further back.
+    # For this reason, sometimes when requesting a later page, you'll be reading entries that you
+    # already read from the end of the prior page.  There's not any great way to work around this
+    # and depending upon which message type you're tracking, there's not an obvious answer how to
+    # handle deduplicating it... so the duplicates are provided as-is.  The caller must handle that.
+    def get_news_reel(self, news_reel_filter, time_filter, oldest_timestamp=None):
+        global NEWS_REEL_MULTIPAGE_DELAY_SECONDS
         if isinstance(news_reel_filter, NewsReelFilter):
             news_reel_filter_value = str(news_reel_filter)
         else:
             news_reel_filter_value = ':'.join([str(entry.value) for entry in sorted(news_reel_filter)])
-        
         common_form_data = [
             ('NewsReelFilter', news_reel_filter_value),
             ('TimeFilter', time_filter.value),
             ('odo', 'true')  # Specified to match client behavior; no idea why this is sent.
         ]
-        
         form_data = list(common_form_data)
-        
         page = 1
-        # Loads all the pages, in sequence, until done..
-        # TODO: need this to work differently so we don't spam the server like crazy
-        
-        total_rows = None
-        while page < 5:  # True:
+        result = []
+        latest_timedata = None
+        while True:
             web_gate_request = ClanWebGateRequest.NEWS_REEL
             suffix = f".{page}" if page > 1 else ''
             root_element = self.request(
@@ -643,39 +645,33 @@ class ApiClient(object):
             if ClientOption.PRINT_NEWS_REEL in self.option_set:
                 print(f"Loaded news reel page {page}")
             page += 1
-            
             start_row_element = root_element.find('./ObjectData/GridCurrentStartRow')
             row_per_page_element = root_element.find('./ObjectData/GridRowPerPage')
             current_page_rows_element = root_element.find('./ObjectData/GridCurrentPageRows')
             total_rows_element = root_element.find('./ObjectData/GridTotalRows')
             if None in [start_row_element, row_per_page_element, current_page_rows_element, total_rows_element]:
                 raise ApiError('News reel response has one or more missing Grid related fields.')
-            
             start_row = int(start_row_element.text)
             page_row_count = int(current_page_rows_element.text)
+            total_rows = int(total_rows_element.text)
             form_data = list(common_form_data)
             form_data.extend([
                 ('GridCurrentStartRow', start_row),
                 ('GridCurrentPageRows', page_row_count),
                 ('GridCurrentPage', page)  # actually the page you want to go to, not 'current'
             ])
-            
-            total_rows = int(total_rows_element.text)
-
-            # any new rows would be added to the front of the list,
-            # pushing the rest of the data further back, so we'll
-            # get duplicates from the end of the previous page at
-            # the start of this page potentially.
-            
             event_elements = root_element.findall('./ObjectData/Events/Event')
             for event_element in event_elements:
-                timedata = event_element.find('./TimeData').text
+                latest_timedata = datetime.strptime(
+                    event_element.find('./TimeData').text,
+                    '%Y-%m-%d %H:%M:%S'
+                )
                 text = event_element.find('./Text').text
-                print(f"EVENT: {timedata} {text}")
-            
-            if (start_row + page_row_count) > total_rows:
-                # No more pages
+                result.append((latest_timedata, text))
+            if oldest_timestamp is None or latest_timedata < oldest_timestamp or (start_row + page_row_count) > total_rows:
+                # Either only getting one page because no timestamp limit specified, the most recent timedata
+                # is earlier than the oldest requested so no more pages are needed, or no pages left to request.
                 break
-            print('Sleeping...')
-            time.sleep(10)
-        return "DONE"
+            # The between-page sleep may be unnecessary, but, we don't want to spam...
+            time.sleep(NEWS_REEL_MULTIPAGE_DELAY_SECONDS)
+        return result
