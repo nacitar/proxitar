@@ -108,68 +108,77 @@ def api_parse_url(url):
     host = parts[0]
     return (parsed_url, host, port)
 
-def api_http_request(url, query=None, form_data=None, headers=None, referer=None, connection=None, print_request=False):
-    if query and not isinstance(query, str):
-        encoded_query = urllib.parse.urlencode(query)
-    else:
-        encoded_query = query
-    parsed_url, host, port = api_parse_url(url)
-    if connection is None:
-        persistent = False
-        connection = http.client.HttpConnection(host, port)
-        url = parsed_url.path
-    else:
-        persistent = True
-    if form_data and not isinstance(form_data, str):
-        form_data = urllib.parse.urlencode(form_data)
-    if headers is None:
-        headers = {}
-    headers.update({
-        # look like chrome
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36',
-        'Accept': 'application/xml, text/xml, */*',
-        'Accept-Encoding': 'gzip, deflate',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'X-Requested-With': 'XMLHttpRequest'
-    })
-    if persistent:
-        headers['Connection'] = 'keep-alive'
-    if referer is not None:
-        headers['Referer'] = referer
-    if form_data is not None:
-        method = 'POST'
-        headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8'
-        headers['Origin'] = f"{parsed_url.scheme}://{parsed_url.netloc}"
-    else:
-        method = 'GET'
-    if encoded_query:
-        request_url = f"{url}?{encoded_query}"
-    else:
-        request_url = url
-    if print_request:
-        print(f"Request: {request_url}")
-        print(f"Post data: {form_data}")
-    connection.request(method=method, url=request_url, headers=headers, body=form_data)
-    response_object = connection.getresponse()
-    response = response_object.read()
-    if not persistent:
-        connection.close()
-    return (dict(response_object.headers), response)
-
 class ApiHttpConnection(object):
     def __init__(self):
         self.connection = None
+        self.host = None
+        self.port = None
         
     def connect(self, host, port):
-        if self.connection:
-            self.close()
-        self.connection = http.client.HTTPConnection(host, port)
+        self.host = host
+        self.port = port
+        self.reconnect()
         return self.connection
-    
+        
+    def reconnect(self):
+        self.close()
+        self.connection = http.client.HTTPConnection(self.host, self.port)
+        print("Socket (re)connected.")
+        return self.connection
+        
     def request(self, url, query=None, form_data=None, headers=None, referer=None, print_request=False):
         if self.connection is None:
             raise RuntimeError('No connection.  Did you forget to call connect()?')
-        return api_http_request(url=url, query=query, form_data=form_data, headers=headers, referer=referer, connection=self.connection, print_request=print_request)
+        if query and not isinstance(query, str):
+            encoded_query = urllib.parse.urlencode(query)
+        else:
+            encoded_query = query
+        parsed_url, host, port = api_parse_url(url)
+        url = parsed_url.path
+        if headers is None:
+            headers = {}
+        headers.update({
+            # look like chrome
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36',
+            'Accept': 'application/xml, text/xml, */*',
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Connection': 'keep-alive'
+        })
+        if referer is not None:
+            headers['Referer'] = referer
+        if form_data is not None:
+            if not isinstance(form_data, str):
+                form_data = urllib.parse.urlencode(form_data)
+            method = 'POST'
+            headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8'
+            headers['Origin'] = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        else:
+            method = 'GET'
+        if encoded_query:
+            request_url = f"{url}?{encoded_query}"
+        else:
+            request_url = url
+        new_connection = False
+        while True:
+            self.connection.request(method=method, url=request_url, headers=headers, body=form_data)
+            try:
+                response_object = self.connection.getresponse()
+            except http.client.RemoteDisconnected as e:
+                if new_connection:
+                    # it happened twice, it isn't just the keep-alive expiring
+                    raise  # let is propagate up
+                self.reconnect()
+                new_connection = True
+                continue # run it one more time with the new connection
+            break  # it worked!
+        # printing the request after the reconnection so the logging order makes more sense
+        if print_request:
+            print(f"Request: {request_url}")
+            print(f"Post data: {form_data}")
+        response = response_object.read()
+        return (dict(response_object.headers), response)
         
     def close(self):
         if self.connection:
@@ -594,6 +603,8 @@ class ApiClient(object):
             raise ApiError('Overview response lacked OverviewNode.')
         return self.__class__.element_to_flat_dict(overview_element)
 
+    # TODO: limit it with a timestamp of some kind?
+    # TODO: parse the timestamp in the file
     def get_news_reel(self, news_reel_filter, time_filter):
         raise RuntimeError('Not finished yet')
         if isinstance(news_reel_filter, NewsReelFilter):
@@ -612,8 +623,11 @@ class ApiClient(object):
         page = 1
         # Loads all the pages, in sequence, until done..
         # TODO: need this to work differently so we don't spam the server like crazy
-        while True:
+        
+        total_rows = None
+        while page < 5:  # True:
             web_gate_request = ClanWebGateRequest.NEWS_REEL
+            suffix = f".{page}" if page > 1 else ''
             root_element = self.request(
                 query=[
                     ('SessionKey', self.session_key),
@@ -622,7 +636,7 @@ class ApiClient(object):
                     ('RequestOwner', RequestOwner.CLAN.value)
                 ],
                 form_data=form_data,
-                mock_name=web_gate_request.name.lower(),
+                mock_name=f"{web_gate_request.name.lower()}{suffix}",
                 mock_category=ApiCategory.CLAN,
                 expect_xml=True
             )
@@ -630,30 +644,38 @@ class ApiClient(object):
                 print(f"Loaded news reel page {page}")
             page += 1
             
-            start_row_element = root_element.find('.//ObjectData/GridCurrentStartRow')
-            if start_row_element is None:
-                raise ApiError('No GridCurrentStartRow')
-            row_per_page_element = root_element.find('.//ObjectData/GridRowPerPage')
-            if row_per_page_element is None:
-                raise ApiError('No GridRowPerPage')
-            current_page_rows_element = root_element.find('.//ObjectData/GridCurrentPageRows')
-            if current_page_rows_element is None:
-                raise ApiError('No GridCurrentPageRows')
-            total_rows_element = root_element.find('.//ObjectData/GridTotalRows')
-            if total_rows_element is None:
-                raise ApiError('No GridTotalRows')
+            start_row_element = root_element.find('./ObjectData/GridCurrentStartRow')
+            row_per_page_element = root_element.find('./ObjectData/GridRowPerPage')
+            current_page_rows_element = root_element.find('./ObjectData/GridCurrentPageRows')
+            total_rows_element = root_element.find('./ObjectData/GridTotalRows')
+            if None in [start_row_element, row_per_page_element, current_page_rows_element, total_rows_element]:
+                raise ApiError('News reel response has one or more missing Grid related fields.')
+            
             start_row = int(start_row_element.text)
             page_row_count = int(current_page_rows_element.text)
-            
             form_data = list(common_form_data)
             form_data.extend([
                 ('GridCurrentStartRow', start_row),
                 ('GridCurrentPageRows', page_row_count),
                 ('GridCurrentPage', page)  # actually the page you want to go to, not 'current'
             ])
-            if (start_row + page_row_count) > int(total_rows_element.text):
+            
+            total_rows = int(total_rows_element.text)
+
+            # any new rows would be added to the front of the list,
+            # pushing the rest of the data further back, so we'll
+            # get duplicates from the end of the previous page at
+            # the start of this page potentially.
+            
+            event_elements = root_element.findall('./ObjectData/Events/Event')
+            for event_element in event_elements:
+                timedata = event_element.find('./TimeData').text
+                text = event_element.find('./Text').text
+                print(f"EVENT: {timedata} {text}")
+            
+            if (start_row + page_row_count) > total_rows:
                 # No more pages
                 break
-        #if overview_element is None:
-        #    raise ApiError('Overview response lacked OverviewNode.')
+            print('Sleeping...')
+            time.sleep(10)
         return "DONE"
