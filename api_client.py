@@ -14,9 +14,6 @@ from datetime import datetime
 
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 JSON_INDENT = 4
-# If we need to get multiple pages of newsreel data in order to
-# become current, this is how long to wait between page requests.
-NEWS_REEL_MULTIPAGE_DELAY_SECONDS = 1
 
 class RequestOwner(Enum):
     # Request order: challenge request, challenge response, browser frame
@@ -672,6 +669,4 @@ class ApiClient(object):
                 # Either only getting one page because no timestamp limit specified, the most recent timedata
                 # is earlier than the oldest requested so no more pages are needed, or no pages left to request.
                 break
-            # The between-page sleep may be unnecessary, but, we don't want to spam...
-            time.sleep(NEWS_REEL_MULTIPAGE_DELAY_SECONDS)
         return result
