@@ -1,15 +1,9 @@
 import bisect
 
 def decode(data):
-    output = ''
-    offset_map = {}
+    output = []
     entries = data.split(',')
     for i in range(len(entries)):
-        # Store the index into the output buffer so references can get
-        # start of this entry and can deduce that it ends at either the
-        # start of the next entry or the end of the full output if this
-        # entry is the last.
-        offset_map[i] = len(output)
         entry = entries[i].strip()
         if entry.startswith('_'):
             # An entry prefixed with an underscore (a reference) is the
@@ -30,32 +24,21 @@ def decode(data):
                     f"Invalid back reference in entry {i}, references"
                     f" future entry {reference_index}: {data}"
                 )
-            offset = offset_map[reference_index]
-            next_offset = offset_map[reference_index+1]
+            reference_value = output[reference_index]
             if reference_index == (i-1):
                 # If the reference is to the previous entry, then the
                 # first character of the output of this entry will also be
-                # the last character of the output of this entry.  The
-                # output buffer of course does not yet have any of the
-                # output of this entry written.  The logic thus follows to
-                # write the first character of the output of this entry
-                # first, and then write the rest which will end with that
-                # newly written character.
-                output += output[offset]
-                output += output[offset+1:next_offset+1]
+                # the last character of the output of this entry.
+                output.append(f"{reference_value}{reference_value[0]}")
             else:
-                # For every index earlier than the prior one, both the
-                # referenced entry and the entry after it are both already
-                # written to the output buffer, thus the output of this
-                # entry can be copied over in one operation.
-                output += output[offset:next_offset+1]
+                output.append(f"{reference_value}{output[reference_index+1][0]}")
         else:
             # An entry not prefixed by an underscore is the decimal ASCII
             # representation of a character, indicating that the output of
             # this entry is that character.
-            output += chr(int(entry))
-    return output
-
+            output.append(chr(int(entry)))
+    return ''.join(output)
+    
 def encode(data):
     entries = []
     # so we can get slices efficiently
