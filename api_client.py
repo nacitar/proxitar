@@ -1,3 +1,4 @@
+import bisect
 import sys
 import os
 import json
@@ -269,7 +270,47 @@ class ApiClient(object):
                 # this entry is that character.
                 output += chr(int(entry))
         return output
-
+    @staticmethod
+    def encode(data):
+        entries = []
+        # so we can get slices efficiently
+        view = memoryview(data.encode('ascii'))
+        entry_offset = []
+        # to limit our back reference searches for efficiency
+        first_letter_entries = {}
+        i = 0
+        while i < len(view):
+            # get this BEFORE adding this entry, so it serves as the index without math
+            entry_index = len(entry_offset)
+            first_letter = view[i]
+            letter_entries = first_letter_entries.get(first_letter, [])
+            if not letter_entries:
+                first_letter_entries[first_letter] = letter_entries
+            entry_offset.append(i)
+            is_reference = False
+            # The length is just for sorting, so _ is a dummy.
+            for _, j in letter_entries:
+                # the referenced entry and the first character of the next entry
+                reference_offset = entry_offset[j]
+                length = entry_offset[j + 1] - reference_offset + 1
+                if view[i:i + length] == view[reference_offset:reference_offset + length]:
+                    # because we're looping largest to smallest, and due to the nature
+                    # of the compression, there's not any concievable back reference
+                    # that could be better... there's only other choices with equivalent
+                    # results.  We prefer the earliest index of any given length due to
+                    # it being representable in less digits.
+                    entries.append(f"_{j}")
+                    is_reference = True
+                    break
+            if not is_reference:
+                length = 1
+                entries.append(str(view[i]))  # add the ordinal, not the value
+            i += length
+            # there's no cmp or reverse arguments for bisect.insort()
+            # so negate the length so larger lengths sort earlier
+            # leave the index alone, we want the earliest index first
+            bisect.insort(letter_entries, (-length, entry_index))
+        return ','.join(entries)
     @staticmethod
     def time_string():
         return str(int(time.time()))
