@@ -288,10 +288,10 @@ class ApiClient(object):
                 first_letter_entries[first_letter] = letter_entries
             entry_offset.append(i)
             is_reference = False
-            # The length is just for sorting, so _ is a dummy.
+            # The length is just for sorting longest to smallest, so _ is a dummy.
             for _, j in letter_entries:
-                # the referenced entry and the first character of the next entry
                 reference_offset = entry_offset[j]
+                # the referenced entry and the first character of the next entry
                 length = entry_offset[j + 1] - reference_offset + 1
                 if view[i:i + length] == view[reference_offset:reference_offset + length]:
                     # because we're looping largest to smallest, and due to the nature
