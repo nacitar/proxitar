@@ -83,13 +83,13 @@ def encode(data):
                 # of the compression, there's not any concievable back reference
                 # that could be better... there's only other choices with equivalent
                 # results.  We prefer the earliest index of any given length due to
-                # it being representable in less digits.
+                # it being potentially being representable in less digits.
                 entries.append(f"_{j}")
                 is_reference = True
                 break
         if not is_reference:
             length = 1
-            entries.append(str(view[i]))  # add the ordinal, not the value
+            entries.append(str(first_letter))  # add the ordinal, not the value
         i += length
         # there's no cmp or reverse arguments for bisect.insort()
         # so negate the length so larger lengths sort earlier
