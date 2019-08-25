@@ -1,10 +1,8 @@
 import bisect
 
 def decode(data):
-    output = []
     entries = data.split(',')
-    for i in range(len(entries)):
-        entry = entries[i].strip()
+    for index, entry in enumerate(entries):
         if entry.startswith('_'):
             # An entry prefixed with an underscore (a reference) is the
             # ASCII representation of the zero-based integer index of a
@@ -18,27 +16,28 @@ def decode(data):
             # concatenated with the first character of the output of the
             # second entry (index 1) in the input data.
             reference_index = int(entry[1:])
-            if reference_index >= i:
+            if reference_index >= index:
                 # Can't reference this entry or any future entry.
                 raise ValueError(
-                    f"Invalid back reference in entry {i}, references"
+                    f"Invalid back reference in entry {index}, references"
                     f" future entry {reference_index}: {data}"
                 )
-            reference_value = output[reference_index]
-            if reference_index == (i-1):
-                # If the reference is to the previous entry, then the
-                # first character of the output of this entry will also be
-                # the last character of the output of this entry.
-                output.append(f"{reference_value}{reference_value[0]}")
+            reference_next_index = reference_index + 1
+            reference_value = entries[reference_index]
+            if reference_next_index == index:
+                # If this entry is the reference_next_index, then the
+                # first character of the output of this entry will also
+                # be the last character of the output of this entry.
+                entries[index] = reference_value + reference_value[0]
             else:
-                output.append(f"{reference_value}{output[reference_index+1][0]}")
+                entries[index] = reference_value + entries[reference_next_index][0]
         else:
             # An entry not prefixed by an underscore is the decimal ASCII
             # representation of a character, indicating that the output of
             # this entry is that character.
-            output.append(chr(int(entry)))
-    return ''.join(output)
-    
+            entries[index] = chr(int(entry))
+    return ''.join(entries)
+
 def encode(data):
     entries = []
     # so we can get slices efficiently
