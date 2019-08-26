@@ -40,41 +40,42 @@ def decode(data):
 
 def encode(data):
     entries = []
-    # so we can get slices efficiently
-    view = memoryview(data.encode('ascii'))
+    # So we can get slices efficiently
+    data = memoryview(data.encode('ascii'))
     entry_offset = []
-    # to limit our back reference searches for efficiency
-    first_letter_entries = {}
-    i = 0
-    while i < len(view):
-        # get this BEFORE adding this entry, so it serves as the index without math
+    # To limit our back reference searches for efficiency
+    entries_with_first_character = {}
+    offset = 0
+    while offset < len(data):
         entry_index = len(entry_offset)
-        first_letter = view[i]
-        letter_entries = first_letter_entries.get(first_letter, [])
-        if not letter_entries:
-            first_letter_entries[first_letter] = letter_entries
-        entry_offset.append(i)
+        entry_offset.append(offset)
+        first_character_ordinal = data[offset]
+        possible_references = entries_with_first_character.get(first_character_ordinal, [])
+        if not possible_references:
+            entries_with_first_character[first_character_ordinal] = possible_references
         is_reference = False
-        # The length is just for sorting longest to smallest, so _ is a dummy.
-        for _, j in letter_entries:
-            reference_offset = entry_offset[j]
-            # the referenced entry and the first character of the next entry
-            length = entry_offset[j + 1] - reference_offset + 1
-            if view[i:i + length] == view[reference_offset:reference_offset + length]:
-                # because we're looping largest to smallest, and due to the nature
+        # _ because the entry length was only needed for sorting to prioritize
+        # longer references
+        for _, reference_index in possible_references:
+            reference_offset = entry_offset[reference_index]
+            # The referenced entry and the first character of the next entry
+            entry_length = entry_offset[reference_index + 1] - reference_offset + 1
+            if data[offset:offset + entry_length] == data[reference_offset:reference_offset + entry_length]:
+                # Because we're looping largest to smallest, and due to the nature
                 # of the compression, there's not any concievable back reference
                 # that could be better... there's only other choices with equivalent
                 # results.  We prefer the earliest index of any given length due to
                 # it being potentially being representable in less digits.
-                entries.append(f"_{j}")
+                entries.append(f"_{reference_index}")
                 is_reference = True
                 break
         if not is_reference:
-            length = 1
-            entries.append(str(first_letter))  # add the ordinal, not the value
-        i += length
-        # there's no cmp or reverse arguments for bisect.insort()
-        # so negate the length so larger lengths sort earlier
-        # leave the index alone, we want the earliest index first
-        bisect.insort(letter_entries, (-length, entry_index))
+            entry_length = 1
+            entries.append(str(first_character_ordinal))  # Add the ordinal, not the value
+        offset += entry_length
+        # Add this entry to the list of entries starting with this
+        # first character so other entries can find it to reference it.
+        # NOTE: Negated length so that longer entries are checked first.
+        # Earlier indexes of the same length are also checked first.
+        bisect.insort(possible_references, (-entry_length, entry_index))
     return ','.join(entries)
