@@ -25,6 +25,7 @@ class RequestOwner(Enum):
     CLAN = 'QETUO'
     JOURNAL = 'WRYIP'  # unused
     
+# All Referers: the base web url
 class LoginWebGateRequest(IntEnum):
     # Query: extra &, WebGateRequest, RequestOwner, _, UserName, RequestOwner (again)
     # Referer: http://107.155.100.182:50313/spenefett/fwd
@@ -41,7 +42,6 @@ class LoginWebGateRequest(IntEnum):
 
 # All Referers: the url for LoginWebGateRequest.BROWSER_FRAME
 class ClanWebGateRequest(IntEnum):
-    # Provides the WebGateRequest for various API functions, banner, menu, overview, clanid
     # Query: SessionKey, WebGateRequest, RequestOwner
     # Post: ogb=true
     GET_DATA = 1  # I named this
@@ -50,7 +50,7 @@ class ClanWebGateRequest(IntEnum):
     GET_BANNER = 2 
     # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
     # Post: ClanID=123
-    GET_MENU = 3 # unused
+    GET_MENU = 3 # not exposed by ApiClient
     # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
     # Post: id=1 (no idea why it sends this)
     CLAN_OVERVIEW_PAGE = 37
@@ -60,24 +60,24 @@ class ClanWebGateRequest(IntEnum):
     # Initial load Post: id=1 (no idea why it sends this)
     NEWS_REEL = 54
 
-# assembles as colon delimited sorted numbers    
+# Combines as a colon delimited list of sorted numbers
 class NewsReelFilter(IntEnum):
-    BINDS = 0  # unused
+    BINDS = 0
     PROXIMITY = 1
-    CONNECTIONS = 2  # unused
-    POLITICS = 3  # unused
-    RANKS = 4  # unused
-    STRUCTURES = 5  # unused
+    CONNECTIONS = 2
+    POLITICS = 3
+    RANKS = 4
+    STRUCTURES = 5
     RESOURCES = 6
-    WORKSTATIONS = 7  # unused
-    MEMBERS = 8  # unused
-    CONTROL_POINTS = 9  # unused
-    FORTRESSES = 10  # unused
-    MISC = 11  # unused
+    WORKSTATIONS = 7
+    MEMBERS = 8
+    CONTROL_POINTS = 9
+    FORTRESSES = 10
+    MISC = 11
     
 class TimeFilter(IntEnum):
-    ONE_DAY = 0,
-    THREE_DAYS = 1,
+    ONE_DAY = 0
+    THREE_DAYS = 1
     SEVEN_DAYS = 2
 
 class ClientOption(Enum):
@@ -193,13 +193,11 @@ class ApiHttpConnection(object):
             self.connection = None
 
 # TODO: consider _requiring_ mock_name
-# TODO: reorder class methods?
 class ApiClient(object):
     """ Connects to the server and manages the session. """
     
-    # TODO: rename this method
     @staticmethod
-    def element_to_flat_dict(element):
+    def flattened_child_element_text_mapping(element):
         result = {}
         queue = deque([(None, list(element))])
         while len(queue):
@@ -223,6 +221,13 @@ class ApiClient(object):
     def clear_session(self):
         self.session_key = None
         self.clan_id = None
+
+    def disconnect(self):
+        self.clear_session()
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+        self.cookie = None
         
     def __init__(self, web_url, session_file=None, mock_set=None, option_set=None):
         self.web_url = web_url
@@ -236,13 +241,23 @@ class ApiClient(object):
         self.session_file = session_file
         self.connection = None
         self.disconnect()
+    
+    def default_url(self):
+        return self.connection.get_request_url()
         
-    def disconnect(self):
-        self.clear_session()
-        if self.connection:
-            self.connection.close()
-            self.connection = None
-        self.cookie = None
+    def browser_frame_url(self):
+        # This is the page that would be loaded at the end of a successful
+        # login in the web.  We don't need any of that information though,
+        # so we only need the URL for the post-login 'Referer' values.
+        # The login pages all have an extra & erroneously added to this by
+        # the embedded javascript code.
+        query = '&' + urllib.parse.urlencode([
+            ('SessionKey', self.session_key),
+            ('WebGateRequest', LoginWebGateRequest.BROWSER_FRAME.value),
+            ('RequestOwner', RequestOwner.LOGIN.value),
+            ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
+        ])
+        return self.connection.get_request_url(query=query)
     
     def connect(self):
         self.disconnect()
@@ -253,25 +268,6 @@ class ApiClient(object):
         else:
             print('Skipping connection request because MOCKING_ONLY is set.')
         return self.connection
-        
-
-    def load_session(self):
-        try:
-            with open(self.session_file) as handle:
-                session = json.loads(handle.read()).get('Session',{})
-        except FileNotFoundError:
-            session = {}
-        new_session_key = session.get('SessionKey', None)
-        new_clan_id = session.get('ClanID', None)
-        if new_session_key and new_clan_id:
-            if self.use_session(new_session_key, new_clan_id):
-                if ClientOption.PRINT_SESSION in self.option_set:
-                    print(f"Session was loaded from file: {self.session_file}")
-        if not self.session_key:
-            if ClientOption.PRINT_SESSION in self.option_set:
-                print(f"Session in file is not valid: {self.session_file}")
-        return self.session_key
-    
 
     @staticmethod
     def get_mock_filename(mock_name, mock_category, level=0):
@@ -283,6 +279,7 @@ class ApiClient(object):
             if level > 1:
                 mock_path += f".{level}"
         return mock_path
+        
     @staticmethod
     def write_missing_mock_file(mock_name, mock_category, data, level=0):
         mock_path = ApiClient.get_mock_filename(mock_name, mock_category, level)
@@ -296,6 +293,7 @@ class ApiClient(object):
                 mock_file.write(data)
             return True
         return False
+        
     @staticmethod
     def get_mock_response(mock_name, mock_category, level=0):
         mock_path = ApiClient.get_mock_filename(mock_name, mock_category, level)
@@ -304,10 +302,11 @@ class ApiClient(object):
         with open(mock_path, 'rb') as response:
             response_content = response.read().decode('utf-8')
         return response_content
-    # NOTE: also tracks Set-Cookie for this object
+        
+    # NOTE: also honors Set-Cookie for this object, using the cookie that is requested
     def request(self, query=None, form_data=None, headers=None, referer=None, mock_name=None, mock_category=None, expect_xml=None):
-        global SCRIPT_DIRECTORY
-        if mock_name and mock_category is not None and mock_category in self.mock_set:
+        mockable = bool(mock_name and mock_category is not None)
+        if mockable and mock_category in self.mock_set:
             response_content = self.__class__.get_mock_response(mock_name, mock_category)
         else:
             if ClientOption.MOCKING_ONLY in self.option_set:
@@ -327,7 +326,7 @@ class ApiClient(object):
             )
             # write missing mocks, if necessary
             # needs the bytes type response, so do this before decoding
-            if ClientOption.WRITE_MISSING_MOCKS in self.option_set:
+            if mockable and ClientOption.WRITE_MISSING_MOCKS in self.option_set:
                 self.__class__.write_missing_mock_file(mock_name, mock_category, response_content)
             response_content = response_content.decode('utf-8')
             # update the cookie
@@ -368,7 +367,7 @@ class ApiClient(object):
                 # encoded page
                 response_content = ordinal_sequence_encoder.decode(data_element.text)
                 # Write the extra decoded versions for mocks too, for convenience.
-                if ClientOption.WRITE_MISSING_MOCKS in self.option_set:
+                if mockable and ClientOption.WRITE_MISSING_MOCKS in self.option_set:
                     self.__class__.write_missing_mock_file(mock_name, mock_category, response_content, level)
                 if ClientOption.PRINT_RESPONSE in self.option_set:
                     print(f"Decoded Response: {response_content}")
@@ -378,31 +377,30 @@ class ApiClient(object):
             if expect_xml == True:
                 raise TypeError("Response expected to be xml, but it is not.")
             return response_content
-
-    def save_session(self):
-        global JSON_INDENT
-        if self.session_file:
-            json_string = json.dumps(
-                {
-                    'Session':{
-                        'SessionKey': self.session_key,
-                        'ClanID': self.clan_id
-                    }
-                },
-                indent=JSON_INDENT, sort_keys=True
-            )
-            try:
-                with open(self.session_file, 'w') as handle:
-                    handle.write(json_string)
-                if ClientOption.PRINT_SESSION in self.option_set:
-                    print(f"Session was saved to file: {self.session_file}")
-                return True
-            except Exception as e:
-                print(e)
-                # this message shouldn't be able to be turned off
-                print(f"Exception when writing session file: {self.session_file}")
-        return False
     
+    def update_clan_id(self):
+        self.clan_id = None  # so if an exception occurs, it is cleared
+        # NOTE: if this isn't sent as a post with the Content-Type 'application/x-www-form-urlencoded; charset=utf-8'
+        # the response is some page w/ javascript instead of the nice xml output... the code covers this internally
+        # but this is worth mentioning.
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('WebGateRequest', ClanWebGateRequest.GET_DATA.value),
+                ('RequestOwner', RequestOwner.CLAN.value),
+            ],
+            form_data=[('ogb', 'true')],
+            referer=self.browser_frame_url(),
+            mock_name="clan",
+            mock_category=ApiCategory.LOGIN,
+            expect_xml=True
+        )
+        clan_id_element = root_element.find('./ClanID')
+        self.clan_id = clan_id_element.text if (clan_id_element is not None) else None
+        if ClientOption.PRINT_CLAN_ID in self.option_set:
+            print(f"Clan ID: {self.clan_id}")
+        return self.clan_id
+        
     def validate_session(self):
         old_clan_id = self.clan_id
         if old_clan_id is not None:
@@ -428,22 +426,46 @@ class ApiClient(object):
             self.clear_session()
         return self.session_key
     
-    def default_url(self):
-        return self.connection.get_request_url()
+    def load_session(self):
+        try:
+            with open(self.session_file) as handle:
+                session = json.loads(handle.read()).get('Session',{})
+        except FileNotFoundError:
+            session = {}
+        new_session_key = session.get('SessionKey', None)
+        new_clan_id = session.get('ClanID', None)
+        if new_session_key and new_clan_id:
+            if self.use_session(new_session_key, new_clan_id):
+                if ClientOption.PRINT_SESSION in self.option_set:
+                    print(f"Session was loaded from file: {self.session_file}")
+        if not self.session_key:
+            if ClientOption.PRINT_SESSION in self.option_set:
+                print(f"Session in file is not valid: {self.session_file}")
+        return self.session_key
         
-    def browser_frame_url(self):
-        # This is the page that would be loaded at the end of a successful
-        # login in the web.  We don't need any of that information though,
-        # so we only need the URL for the post-login 'Referer' values.
-        # The login pages all have an extra & erroneously added to this by
-        # the embedded javascript code.
-        query = '&' + urllib.parse.urlencode([
-            ('SessionKey', self.session_key),
-            ('WebGateRequest', LoginWebGateRequest.BROWSER_FRAME.value),
-            ('RequestOwner', RequestOwner.LOGIN.value),
-            ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
-        ])
-        return self.connection.get_request_url(query=query)
+    def save_session(self):
+        global JSON_INDENT
+        if self.session_file:
+            json_string = json.dumps(
+                {
+                    'Session':{
+                        'SessionKey': self.session_key,
+                        'ClanID': self.clan_id
+                    }
+                },
+                indent=JSON_INDENT, sort_keys=True
+            )
+            try:
+                with open(self.session_file, 'w') as handle:
+                    handle.write(json_string)
+                if ClientOption.PRINT_SESSION in self.option_set:
+                    print(f"Session was saved to file: {self.session_file}")
+                return True
+            except Exception as e:
+                print(e)
+                # this message shouldn't be able to be turned off
+                print(f"Exception when writing session file: {self.session_file}")
+        return False
         
     def login(self, user_name, password_sha1):
         # The login pages all have an extra & erroneously added to the query
@@ -493,29 +515,6 @@ class ApiClient(object):
                 self.clear_session()
         return self.session_key
     
-    def update_clan_id(self):
-        self.clan_id = None  # so if an exception occurs, it is cleared
-        # NOTE: if this isn't sent as a post with the Content-Type 'application/x-www-form-urlencoded; charset=utf-8'
-        # the response is some page w/ javascript instead of the nice xml output... the code covers this internally
-        # but this is worth mentioning.
-        root_element = self.request(
-            query=[
-                ('SessionKey', self.session_key),
-                ('WebGateRequest', ClanWebGateRequest.GET_DATA.value),
-                ('RequestOwner', RequestOwner.CLAN.value),
-            ],
-            form_data=[('ogb', 'true')],
-            referer=self.browser_frame_url(),
-            mock_name="clan",
-            mock_category=ApiCategory.LOGIN,
-            expect_xml=True
-        )
-        clan_id_element = root_element.find('./ClanID')
-        self.clan_id = clan_id_element.text if (clan_id_element is not None) else None
-        if ClientOption.PRINT_CLAN_ID in self.option_set:
-            print(f"Clan ID: {self.clan_id}")
-        return self.clan_id
-    
     def get_clan_name(self):
         web_gate_request = ClanWebGateRequest.GET_BANNER
         root_element = self.request(
@@ -553,15 +552,14 @@ class ApiClient(object):
         overview_element = root_element.find('.//ObjectData/OverviewNode')
         if overview_element is None:
             raise ApiError('Overview response lacked OverviewNode.')
-        return self.__class__.element_to_flat_dict(overview_element)
+        return self.__class__.flattened_child_element_text_mapping(overview_element)
 
     # When new messages arrive, they arrive on the first page, pushing older entries further back.
     # For this reason, sometimes when requesting a later page, you'll be reading entries that you
     # already read from the end of the prior page.  There's not any great way to work around this
     # and depending upon which message type you're tracking, there's not an obvious answer how to
     # handle deduplicating it... so the duplicates are provided as-is.  The caller must handle that.
-    def get_news_reel(self, news_reel_filter, time_filter, oldest_timestamp=None):
-        global NEWS_REEL_MULTIPAGE_DELAY_SECONDS
+    def get_news_reel(self, news_reel_filter, time_filter, oldest_timestamp=None, multipage_delay_seconds=None):
         if isinstance(news_reel_filter, NewsReelFilter):
             news_reel_filter_value = str(news_reel_filter)
         else:
@@ -620,4 +618,7 @@ class ApiClient(object):
                 # Either only getting one page because no timestamp limit specified, the most recent timedata
                 # is earlier than the oldest requested so no more pages are needed, or no pages left to request.
                 break
+            if multipage_delay_seconds is not None:
+                # In case you know you're going to be retrieving a lot of pages and don't want spam requests too quickly
+                time.sleep(multipage_delay_seconds)
         return result
