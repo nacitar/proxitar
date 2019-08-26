@@ -52,6 +52,12 @@ class ClanWebGateRequest(IntEnum):
     # Post: ClanID=123
     GET_MENU = 3 # not exposed by ApiClient
     # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
+    # Post: id=1
+    BANK_POLICY = 9
+    # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
+    # Post: id=1
+    GUARD_POLICY = 36
+    # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
     # Post: id=1 (no idea why it sends this)
     CLAN_OVERVIEW_PAGE = 37
     # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
@@ -79,6 +85,17 @@ class TimeFilter(IntEnum):
     ONE_DAY = 0
     THREE_DAYS = 1
     SEVEN_DAYS = 2
+
+class ClanBankPolicy(IntEnum):
+    ALL = 0
+    NON_ENEMY = 1
+    ALLIES = 2
+    CLAN = 3
+    
+class GuardPolicy(IntEnum):
+    NON_ALLY = 0
+    ENEMY = 1
+    NOONE = 2
 
 class ClientOption(Enum):
     PRINT_REQUEST = auto()
@@ -533,26 +550,6 @@ class ApiClient(object):
         if clan_name_element is None:
             return None
         return clan_name_element.text
-    
-    def get_clan_overview(self):
-        web_gate_request = ClanWebGateRequest.CLAN_OVERVIEW_PAGE
-        root_element = self.request(
-            query=[
-                ('SessionKey', self.session_key),
-                ('ClanID', self.clan_id),
-                ('WebGateRequest', web_gate_request.value),
-                ('RequestOwner', RequestOwner.CLAN.value)
-            ],
-            form_data=[('id', '1')],  # Specified to match client behavior; no idea why this is sent.
-            mock_name=web_gate_request.name.lower(),
-            mock_category=ApiCategory.CLAN,
-            expect_xml=True
-        )
-        # there is a df123133 (random numbers) intermediary tag, hence the //
-        overview_element = root_element.find('.//ObjectData/OverviewNode')
-        if overview_element is None:
-            raise ApiError('Overview response lacked OverviewNode.')
-        return self.__class__.flattened_child_element_text_mapping(overview_element)
 
     # When new messages arrive, they arrive on the first page, pushing older entries further back.
     # For this reason, sometimes when requesting a later page, you'll be reading entries that you
@@ -622,3 +619,107 @@ class ApiClient(object):
                 # In case you know you're going to be retrieving a lot of pages and don't want spam requests too quickly
                 time.sleep(multipage_delay_seconds)
         return result
+        
+    def get_bank_policy(self):
+        web_gate_request = ClanWebGateRequest.BANK_POLICY
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('ClanID', self.clan_id),
+                ('WebGateRequest', web_gate_request.value),
+                ('RequestOwner', RequestOwner.CLAN.value)
+            ],
+            form_data=[('id', '1')],  # Specified to match client behavior; no idea why this is sent.
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.CLAN,
+            expect_xml=True
+        )
+        # there is a df123133 (random numbers) intermediary tag, hence the //
+        clan_bank_policy_index_element = root_element.find('.//ObjectData/CurrentClanBankPolicy/ClanBankPolicyIndex')
+        if clan_bank_policy_index_element is None:
+            raise ApiError('Bank policy response lacked CurrentClanBankPolicy/ClanBankPolicyIndex.')
+        return ClanBankPolicy(int(clan_bank_policy_index_element.text))
+        
+    # TODO: need to figure out valid response
+    def set_bank_policy(self, policy):
+        # Can raise ApiError("You don't have the sufficient rank needed to perform this action.")
+        web_gate_request = ClanWebGateRequest.BANK_POLICY
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('RequestOwner', RequestOwner.CLAN.value),
+                ('ClanID', self.clan_id)
+            ],
+            form_data=[
+                ('ClanBankPolicy', policy.value),
+                ('OperationType', 1),  # Specified to match client behavior; no idea why this is sent.
+                ('WebGateRequest', web_gate_request.value)
+            ],
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.CLAN,
+            expect_xml=True
+        )
+        # TODO: verify response?  what does a successful response look like?
+        return root_element
+        
+    def get_guard_policy(self):
+        web_gate_request = ClanWebGateRequest.GUARD_POLICY
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('ClanID', self.clan_id),
+                ('WebGateRequest', web_gate_request.value),
+                ('RequestOwner', RequestOwner.CLAN.value)
+            ],
+            form_data=[('id', '1')],  # Specified to match client behavior; no idea why this is sent.
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.CLAN,
+            expect_xml=True
+        )
+        # there is a df123133 (random numbers) intermediary tag, hence the //
+        guard_policy_index_element = root_element.find('.//ObjectData/CurrentGuardPolicy/GuardPolicyIndex')
+        if guard_policy_index_element is None:
+            raise ApiError('Bank policy response lacked CurrentGuardPolicy/GuardPolicyIndex.')
+        return GuardPolicy(int(guard_policy_index_element.text))
+    
+    # TODO: need to figure out valid response
+    def set_guard_policy(self, policy):
+        # Can raise ApiError("You don't have the sufficient rank needed to perform this action.")
+        web_gate_request = ClanWebGateRequest.GUARD_POLICY
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('RequestOwner', RequestOwner.CLAN.value),
+                ('ClanID', self.clan_id)
+            ],
+            form_data=[
+                ('GuardPolicy', policy.value),
+                ('OperationType', 4),  # Specified to match client behavior; no idea why this is sent.
+                ('WebGateRequest', web_gate_request.value)
+            ],
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.CLAN,
+            expect_xml=True
+        )
+        # TODO: verify response?  what does a successful response look like?
+        return root_element
+    
+    def get_clan_overview(self):
+        web_gate_request = ClanWebGateRequest.CLAN_OVERVIEW_PAGE
+        root_element = self.request(
+            query=[
+                ('SessionKey', self.session_key),
+                ('ClanID', self.clan_id),
+                ('WebGateRequest', web_gate_request.value),
+                ('RequestOwner', RequestOwner.CLAN.value)
+            ],
+            form_data=[('id', '1')],  # Specified to match client behavior; no idea why this is sent.
+            mock_name=web_gate_request.name.lower(),
+            mock_category=ApiCategory.CLAN,
+            expect_xml=True
+        )
+        # there is a df123133 (random numbers) intermediary tag, hence the //
+        overview_element = root_element.find('.//ObjectData/OverviewNode')
+        if overview_element is None:
+            raise ApiError('Overview response lacked OverviewNode.')
+        return self.__class__.flattened_child_element_text_mapping(overview_element)
