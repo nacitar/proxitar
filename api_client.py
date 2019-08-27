@@ -383,7 +383,7 @@ class ApiClient(object):
                 if logout_element is not None and logout_element.text == 'true':
                     # this is sent whenever the session is invalid
                     raise ApiError('Invalid Session: server sent <Logout>true</Logout>')
-                # TODO: can we really assume no other xml will have a 'Data' entry?
+                # NOTE: assuming no other kinds of responses will have a 'Data' entry.
                 data_element = root_element.find('./Data')
                 if data_element is None:
                     # return the xml
