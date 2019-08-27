@@ -18,6 +18,17 @@ import ordinal_sequence_encoder
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 JSON_INDENT = 4
 
+class ApiMessage(Enum):
+    TEMPORARY_BAN = 'You have been temporarily banned, please check the email you have registered to this account for further details.(#3)'
+    BAD_ATTRIBUTES = 'Missing Or Invalid Required Attributes. Please check and try again.'
+    GUARD_POLICY_CHANGED = 'The Guard policy has been changed.'
+    BANK_POLICY_CHANGED = 'The bank policy for all your clan cities has been changed.'
+    INVALID_CREDENTIALS = 'Invalid username or password.(#3)'
+    INSUFFICIENT_PERMISSION = 'TODO FILL THIS IN' # TODO
+
+class ApiError(Exception):
+    pass
+
 class RequestOwner(Enum):
     # Request order: challenge request, challenge response, browser frame
     LOGIN = 'EXTBRM'
@@ -86,7 +97,7 @@ class TimeFilter(IntEnum):
     THREE_DAYS = 1
     SEVEN_DAYS = 2
 
-class ClanBankPolicy(IntEnum):
+class BankPolicy(IntEnum):
     ALL = 0
     NON_ENEMY = 1
     ALLIES = 2
@@ -98,6 +109,7 @@ class GuardPolicy(IntEnum):
     NOONE = 2
 
 class ClientOption(Enum):
+    PRINT_MESSAGE = auto()
     PRINT_REQUEST = auto()
     PRINT_RESPONSE = auto()
     PRINT_APIERROR = auto()
@@ -111,9 +123,6 @@ class ApiCategory(Enum):
     LOGIN = auto()
     ERROR = auto()
     CLAN = auto()
-
-class ApiError(Exception):
-    pass
 
 class ApiHttpConnection(object):
     def __init__(self):
@@ -320,6 +329,13 @@ class ApiClient(object):
             response_content = response.read().decode('utf-8')
         return response_content
         
+    @staticmethod
+    def get_message(element):
+        message_element = element.find('./ResultNode/Result/Message')
+        if message_element is not None:
+            return message_element.text
+        return None
+        
     # NOTE: also honors Set-Cookie for this object, using the cookie that is requested
     def request(self, query=None, form_data=None, headers=None, referer=None, mock_name=None, mock_category=None, expect_xml=None):
         mockable = bool(mock_name and mock_category is not None)
@@ -363,13 +379,6 @@ class ApiClient(object):
             except:
                 root_element = None
             if root_element is not None:
-                error_element = root_element.find('./ResultNode/Result/Message')
-                if error_element is not None:
-                    # TODO: remove print?
-                    if ClientOption.PRINT_APIERROR in self.option_set:
-                        print(f"Server Error Message: {error_element.text}")
-                    # this failure can propagate out to the wrapper and it can reconnect
-                    raise ApiError(error_element.text)
                 logout_element = root_element.find('./ObjectData/Logout')
                 if logout_element is not None and logout_element.text == 'true':
                     # this is sent whenever the session is invalid
@@ -380,6 +389,11 @@ class ApiClient(object):
                     # return the xml
                     if expect_xml == False:
                         raise TypeError("Response expected to not be xml, but it is xml.")
+                    # Print messages, independent of whether or not they are handled.
+                    message = self.__class__.get_message(root_element)
+                    if message is not None:
+                        if ClientOption.PRINT_MESSAGE in self.option_set:
+                            print(f"Api Message: {message}")
                     return root_element
                 # encoded page
                 response_content = ordinal_sequence_encoder.decode(data_element.text)
@@ -490,46 +504,75 @@ class ApiClient(object):
         self.clear_session()  # so if an exception occurs, it is cleared
         web_gate_request = LoginWebGateRequest.CHALLENGE_REQUEST
         request_owner = RequestOwner.LOGIN
-        # send initial request to get the RCK salt
-        root_element = self.request(
-            query='&' + urllib.parse.urlencode([
-                ('WebGateRequest', web_gate_request.value),
-                ('RequestOwner', request_owner.value),
-                ('_', self.__class__.time_string()),
-                ('UserName', user_name),
-                ('RequestOwner', request_owner.value)  # Specified again to match client behavior.
-            ]),
-            referer=self.default_url(),
-            mock_name=web_gate_request.name.lower(),
-            mock_category=ApiCategory.LOGIN,
-            expect_xml=True
-        )
-        rck_element = root_element.find('./RCK')
-        rck = rck_element.text if (rck_element is not None) else None
-        if rck:
-            salted_password_sha1 = hashlib.sha1((password_sha1.upper() + rck).encode('ascii')).hexdigest().upper()
-            web_gate_request = LoginWebGateRequest.CHALLENGE_RESPONSE
-            # send the salted password to get the SessionKey
+        retry = True
+        # This loop always breaks at the end, but one place continues
+        while True:
+            # send initial request to get the RCK salt
             root_element = self.request(
                 query='&' + urllib.parse.urlencode([
                     ('WebGateRequest', web_gate_request.value),
-                    ('_', self.__class__.time_string()),
-                    ('Password', salted_password_sha1),
-                    ('UserName', user_name),
                     ('RequestOwner', request_owner.value),
+                    ('_', self.__class__.time_string()),
+                    ('UserName', user_name),
+                    ('RequestOwner', request_owner.value)  # Specified again to match client behavior.
                 ]),
                 referer=self.default_url(),
                 mock_name=web_gate_request.name.lower(),
                 mock_category=ApiCategory.LOGIN,
-                expect_xml=True)
-            session_key_element = root_element.find('./SessionKey')
-            session_key = session_key_element.text if (session_key_element is not None) else None
-            self.session_key = session_key
-            if self.update_clan_id():
-                if ClientOption.PRINT_SESSION in self.option_set:
-                    print('New session established.')
+                expect_xml=True
+            )
+            rck_element = root_element.find('./RCK')
+            if rck_element is None:
+                message = self.__class__.get_message(root_element)
+                if message == ApiMessage.BAD_ATTRIBUTES.value:
+                    # you get this if you send the challenge request again when it's waiting for the challenge response.
+                    if not retry:
+                        raise ApiError('Repeated invalid login state.')
+                    retry = False
+                    print('Invalid login state; retrying...')
+                    continue
+                elif message == ApiMessage.INVALID_CREDENTIALS.value:
+                    # They don't give the RCK if the user doesn't exist, so this
+                    # effectively checks if the user exists.
+                    raise ApiError('Invalid Credentials: No user with the specified name exists.')
+                elif message is not None:
+                    raise ApiError(f"Unexpected message: {message}")
+                # this state may not actually occur
+                raise ApiError('Bad response; missing RCK.')
             else:
-                self.clear_session()
+                rck = rck_element.text
+                salted_password_sha1 = hashlib.sha1((password_sha1.upper() + rck).encode('ascii')).hexdigest().upper()
+                web_gate_request = LoginWebGateRequest.CHALLENGE_RESPONSE
+                # send the salted password to get the SessionKey
+                root_element = self.request(
+                    query='&' + urllib.parse.urlencode([
+                        ('WebGateRequest', web_gate_request.value),
+                        ('_', self.__class__.time_string()),
+                        ('Password', salted_password_sha1),
+                        ('UserName', user_name),
+                        ('RequestOwner', request_owner.value),
+                    ]),
+                    referer=self.default_url(),
+                    mock_name=web_gate_request.name.lower(),
+                    mock_category=ApiCategory.LOGIN,
+                    expect_xml=True)
+                session_key_element = root_element.find('./SessionKey')
+                if session_key_element is None:
+                    message = self.__class__.get_message(root_element)
+                    if message == ApiMessage.INVALID_CREDENTIALS:
+                        raise ApiError('Invalid Credentials: Incorrect password.')
+                    elif message is not None:
+                        raise ApiError(f"Unexpected message: {message.value}")
+                    # this state may not actually occur
+                    raise ApiError('Bad response; missing SessionKey.')
+                session_key = session_key_element.text if (session_key_element is not None) else None
+                self.session_key = session_key
+                if self.update_clan_id():
+                    if ClientOption.PRINT_SESSION in self.option_set:
+                        print('New session established.')
+                else:
+                    self.clear_session()
+            break
         return self.session_key
     
     def get_clan_name(self):
@@ -548,7 +591,7 @@ class ApiClient(object):
         )
         clan_name_element = root_element.find('./ClanBannerNode/ClanName')
         if clan_name_element is None:
-            return None
+            raise ApiError('Bad response; missing ClanName.')
         return clan_name_element.text
 
     # When new messages arrive, they arrive on the first page, pushing older entries further back.
@@ -593,7 +636,7 @@ class ApiClient(object):
             current_page_rows_element = root_element.find('./ObjectData/GridCurrentPageRows')
             total_rows_element = root_element.find('./ObjectData/GridTotalRows')
             if None in [start_row_element, row_per_page_element, current_page_rows_element, total_rows_element]:
-                raise ApiError('News reel response has one or more missing Grid related fields.')
+                raise ApiError("Bad response; missing one or more Grid related fields.")
             start_row = int(start_row_element.text)
             page_row_count = int(current_page_rows_element.text)
             total_rows = int(total_rows_element.text)
@@ -637,12 +680,10 @@ class ApiClient(object):
         # there is a df123133 (random numbers) intermediary tag, hence the //
         clan_bank_policy_index_element = root_element.find('.//ObjectData/CurrentClanBankPolicy/ClanBankPolicyIndex')
         if clan_bank_policy_index_element is None:
-            raise ApiError('Bank policy response lacked CurrentClanBankPolicy/ClanBankPolicyIndex.')
-        return ClanBankPolicy(int(clan_bank_policy_index_element.text))
+            raise ApiError('Bad response; missing CurrentClanBankPolicy/ClanBankPolicyIndex.')
+        return BankPolicy(int(clan_bank_policy_index_element.text))
         
-    # TODO: need to figure out valid response
     def set_bank_policy(self, policy):
-        # Can raise ApiError("You don't have the sufficient rank needed to perform this action.")
         web_gate_request = ClanWebGateRequest.BANK_POLICY
         root_element = self.request(
             query=[
@@ -659,8 +700,17 @@ class ApiClient(object):
             mock_category=ApiCategory.CLAN,
             expect_xml=True
         )
-        # TODO: verify response?  what does a successful response look like?
-        return root_element
+        message = self.__class__.get_message(root_element)
+        if message == ApiMessage.INSUFFICIENT_PERMISSION.value:
+            result = False
+        elif message == ApiMessage.BANK_POLICY_CHANGED.value:
+            result = True
+        elif message is not None:
+            raise ApiError(f"Unexpected message: {message}")
+        else:   
+            # this state may not actually occur
+            raise ApiError('Bad response')
+        return result
         
     def get_guard_policy(self):
         web_gate_request = ClanWebGateRequest.GUARD_POLICY
@@ -679,12 +729,10 @@ class ApiClient(object):
         # there is a df123133 (random numbers) intermediary tag, hence the //
         guard_policy_index_element = root_element.find('.//ObjectData/CurrentGuardPolicy/GuardPolicyIndex')
         if guard_policy_index_element is None:
-            raise ApiError('Bank policy response lacked CurrentGuardPolicy/GuardPolicyIndex.')
+            raise ApiError('Bad response; missing CurrentGuardPolicy/GuardPolicyIndex.')
         return GuardPolicy(int(guard_policy_index_element.text))
     
-    # TODO: need to figure out valid response
     def set_guard_policy(self, policy):
-        # Can raise ApiError("You don't have the sufficient rank needed to perform this action.")
         web_gate_request = ClanWebGateRequest.GUARD_POLICY
         root_element = self.request(
             query=[
@@ -701,8 +749,17 @@ class ApiClient(object):
             mock_category=ApiCategory.CLAN,
             expect_xml=True
         )
-        # TODO: verify response?  what does a successful response look like?
-        return root_element
+        message = self.__class__.get_message(root_element)
+        if message == ApiMessage.INSUFFICIENT_PERMISSION.value:
+            result = False
+        elif message == ApiMessage.GUARD_POLICY_CHANGED.value:
+            result = True
+        elif message is not None:
+            raise ApiError(f"Unexpected message: {message}")
+        else:   
+            # this state may not actually occur
+            raise ApiError('Bad response')
+        return result
     
     def get_clan_overview(self):
         web_gate_request = ClanWebGateRequest.CLAN_OVERVIEW_PAGE
@@ -721,5 +778,5 @@ class ApiClient(object):
         # there is a df123133 (random numbers) intermediary tag, hence the //
         overview_element = root_element.find('.//ObjectData/OverviewNode')
         if overview_element is None:
-            raise ApiError('Overview response lacked OverviewNode.')
+            raise ApiError('Bad response; missing OverviewNode.')
         return self.__class__.flattened_child_element_text_mapping(overview_element)
