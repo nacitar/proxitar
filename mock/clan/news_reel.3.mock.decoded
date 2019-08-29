@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<RootNode>
+  <VersionInformation Incremental="1" Major="0" Minor="0"/>
+  <RequestID Value="6D2576BC71E1E30C4C36F41B23BC738E.3920136"/>
+  <ObjectData>
+    <GridCurrentStartRow>42</GridCurrentStartRow>
+    <GridRowPerPage>20</GridRowPerPage>
+    <GridCurrentPageRows>20</GridCurrentPageRows>
+    <GridTotalRows>61</GridTotalRows>
+    <Events>
+      <Event>
+        <TimeData>2019-07-11 07:47:25</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:24</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:22</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:21</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:20</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:18</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:17</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:15</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:14</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:13</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:11</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:10</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:09</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:07</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:06</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:04</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:03</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:02</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:47:00</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:46:59</TimeData>
+        <Text>General Darth Vader is gathering resources from our Stone Quarry in Izkand.</Text>
+      </Event>
+    </Events>
+    <CurrentNewsReels>
+      <CurrentNewsReel>
+        <NewsReelIndex>1</NewsReelIndex>
+      </CurrentNewsReel>
+      <CurrentNewsReel>
+        <NewsReelIndex>6</NewsReelIndex>
+      </CurrentNewsReel>
+    </CurrentNewsReels>
+    <CurrentTime>
+      <TimeName>24 hours</TimeName>
+      <TimeLabel>New</TimeLabel>
+      <TimeIndex>0</TimeIndex>
+    </CurrentTime>
+  </ObjectData>
+</RootNode>

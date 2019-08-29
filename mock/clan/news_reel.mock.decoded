@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<RootNode>
+  <VersionInformation Incremental="1" Major="0" Minor="0"/>
+  <RequestID Value="6D2576BC71E1E30C4C36F41B23BC738E.3920136"/>
+  <ObjectData>
+    <GridCurrentStartRow>2</GridCurrentStartRow>
+    <GridRowPerPage>20</GridRowPerPage>
+    <GridCurrentPageRows>20</GridCurrentPageRows>
+    <GridTotalRows>62</GridTotalRows>
+    <Events>
+      <Event>
+        <TimeData>2019-07-11 08:06:19</TimeData>
+        <Text>General Neil Tyson from our clan the Mathletes left our city of spiderfang.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 08:04:12</TimeData>
+        <Text>General Bobby Brown from our clan the Mathletes left our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 08:04:10</TimeData>
+        <Text>General Neil Tyson from our clan the Mathletes entered our city of spiderfang.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 08:03:36</TimeData>
+        <Text>General Neil Tyson from our clan the Mathletes left our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 08:02:15</TimeData>
+        <Text>Lieutenant Rick James from our clan the Mathletes left our city of bloodscar.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 08:01:33</TimeData>
+        <Text>General Hulk Hogan from our clan the Mathletes left our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 08:00:35</TimeData>
+        <Text>General Neil Tyson from our clan the Mathletes entered our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:58:50</TimeData>
+        <Text>Colonel Rick Flair from our clan the Mathletes entered our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:58:08</TimeData>
+        <Text>Colonel Rick Flair from our clan the Mathletes left our city of bloodscar.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:58:03</TimeData>
+        <Text>General Hulk Hogan from our clan the Mathletes entered our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:57:47</TimeData>
+        <Text>Captain The Undertaker from our clan the Mathletes entered our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:57:41</TimeData>
+        <Text>Major Mad Max from the Clan of the Padawans has left our city of bloodscar.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:57:22</TimeData>
+        <Text>General Hulk Hogan from our clan the Mathletes left our city of bloodscar.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:56:58</TimeData>
+        <Text>Captain The Undertaker from our clan the Mathletes left our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:56:34</TimeData>
+        <Text>General Kangaroo Jack from our clan the Mathletes left our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:56:14</TimeData>
+        <Text>General Dancing Banana from our clan the Mathletes left our city of bloodscar.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:55:46</TimeData>
+        <Text>General Bobby Brown from our clan the Mathletes entered our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:53:07</TimeData>
+        <Text>General Dancing Banana from our clan the Mathletes entered our city of bloodscar.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:53:01</TimeData>
+        <Text>General Kangaroo Jack from our clan the Mathletes entered our city of Mehatil.</Text>
+      </Event>
+      <Event>
+        <TimeData>2019-07-11 07:52:44</TimeData>
+        <Text>Colonel Rick Flair from our clan the Mathletes entered our city of bloodscar.</Text>
+      </Event>
+    </Events>
+    <CurrentNewsReels>
+      <CurrentNewsReel>
+        <NewsReelIndex>1</NewsReelIndex>
+      </CurrentNewsReel>
+      <CurrentNewsReel>
+        <NewsReelIndex>6</NewsReelIndex>
+      </CurrentNewsReel>
+    </CurrentNewsReels>
+    <CurrentTime>
+      <TimeName>24 hours</TimeName>
+      <TimeLabel>New</TimeLabel>
+      <TimeIndex>0</TimeIndex>
+    </CurrentTime>
+  </ObjectData>
+</RootNode>

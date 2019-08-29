@@ -121,26 +121,26 @@ class ApiHttpConnection(object):
         self.port = None
         self.default_path = None
         self.default_query = None
-        
-    def connect(self, url):
+    
+    def set_url(self, url):
         parsed_url = urllib.parse.urlparse(url)
         if parsed_url.scheme != 'http':
             raise ValueError('Url is not using http scheme.')
+        self.close()
         self.default_path = parsed_url.path if parsed_url.path else None
         self.default_query = parsed_url.query if parsed_url.query else None
         self.origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
         parts = parsed_url.netloc.split(':', 1)
         self.host = parts[0]
         self.port = int(parts[1]) if (len(parts) == 2) else 80
-        self.reconnect()
-
-    def reconnect(self):
+    
+    def connect(self):
         self.close()
         self.connection = http.client.HTTPConnection(self.host, self.port)
         print("Socket (re)connected.")
         return self.connection
     
-    def _get_url(self, path=None, query=None):
+    def _get_path_query(self, path=None, query=None):
         if path is None:
             path = self.default_path
         if query is None:
@@ -155,13 +155,13 @@ class ApiHttpConnection(object):
         return path
     
     def get_request_url(self, path=None, query=None):
-        path_query = self._get_url(path=path, query=query)
+        path_query = self._get_path_query(path=path, query=query)
         return f"{self.origin}{path_query}"
         
     def request(self, path=None, query=None, form_data=None, headers=None, referer=None, print_request=False):
         if self.connection is None:
             raise RuntimeError('No connection.  Did you forget to call connect()?')
-        url = self._get_url(path, query)
+        url = self._get_path_query(path, query)
         if headers is None:
             headers = {}
         headers.update({
@@ -192,7 +192,7 @@ class ApiHttpConnection(object):
                 if new_connection:
                     # it happened twice, it isn't just the keep-alive expiring
                     raise  # let is propagate up
-                self.reconnect()
+                self.connect()
                 new_connection = True
                 continue # run it one more time with the new connection
             break  # it worked!
@@ -277,10 +277,11 @@ class ApiClient(object):
     
     def connect(self):
         self.disconnect()
+        self.connection = ApiHttpConnection()
+        self.connection.set_url(self.web_url)
         # if mocking only, skip connecting... it would be pointless.
         if ClientOption.MOCKING_ONLY not in self.option_set:
-            self.connection = ApiHttpConnection()
-            self.connection.connect(self.web_url)
+            self.connection.connect()
         else:
             print('Skipping connection request because MOCKING_ONLY is set.')
         return self.connection
