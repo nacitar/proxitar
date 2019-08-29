@@ -18,50 +18,41 @@ import ordinal_sequence_encoder
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 JSON_INDENT = 4
 
+class ApiError(Exception):
+    pass
+
+# This isn't passed anywhere, it's values are just used in comparisons.
 class ApiMessage(Enum):
     TEMPORARY_BAN = 'You have been temporarily banned, please check the email you have registered to this account for further details.(#3)'
     BAD_ATTRIBUTES = 'Missing Or Invalid Required Attributes. Please check and try again.'
     GUARD_POLICY_CHANGED = 'The Guard policy has been changed.'
     BANK_POLICY_CHANGED = 'The bank policy for all your clan cities has been changed.'
     INVALID_CREDENTIALS = 'Invalid username or password.(#3)'
-    INSUFFICIENT_PERMISSION = 'TODO FILL THIS IN' # TODO
-
-class ApiError(Exception):
-    pass
+    INSUFFICIENT_PERMISSION = 'You do not have the sufficient access to perform this operation.'
 
 class RequestOwner(Enum):
-    # Request order: challenge request, challenge response, browser frame
     LOGIN = 'EXTBRM'
-    # Request order: get data, get banner, get menu, clan overview page
     CLAN = 'QETUO'
     JOURNAL = 'WRYIP'  # unused
     
 # All Referers: the base web url
 class LoginWebGateRequest(IntEnum):
     # Query: extra &, WebGateRequest, RequestOwner, _, UserName, RequestOwner (again)
-    # Referer: http://107.155.100.182:50313/spenefett/fwd
     CHALLENGE_REQUEST = 1
     # Query: extra &, WebGateRequest, _, Password, UserName, RequestOwner
-    # Referer: http://107.155.100.182:50313/spenefett/fwd    
     CHALLENGE_RESPONSE = 2
     # The outer page with the framed navigation panel providing the clan/journal tabs.
-    # Has javascript with the RequestOwner and main WebGateRequest for the Clan and Journal tabs
     # Query: extra &, SessionKey, WebGateRequest, RequestOwner, RequestOwner (again)
-    # Referer: http://107.155.100.182:50313/spenefett/fwd
-    # This URL is the referer for everything other than login requests.
-    BROWSER_FRAME = 3  # unused
+    BROWSER_FRAME = 3  # only used as a referer
 
 # All Referers: the url for LoginWebGateRequest.BROWSER_FRAME
 class ClanWebGateRequest(IntEnum):
     # Query: SessionKey, WebGateRequest, RequestOwner
     # Post: ogb=true
-    GET_DATA = 1  # I named this
+    GET_DATA = 1  # I named this; was nothing in the web code to imply a name.
     # Query: SessionKey, WebGateRequest, RequestOwner
     # Post: ClanID=123
-    GET_BANNER = 2 
-    # Query: SessionKey, WebGateRequest, RequestOwner, ogb=true
-    # Post: ClanID=123
-    GET_MENU = 3 # not exposed by ApiClient
+    GET_BANNER = 2
     # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
     # Post: id=1
     BANK_POLICY = 9
@@ -72,12 +63,11 @@ class ClanWebGateRequest(IntEnum):
     # Post: id=1 (no idea why it sends this)
     CLAN_OVERVIEW_PAGE = 37
     # Query: SessionKey, ClanID, WebGateRequest, RequestOwner
-    # Post: NewsReelFilter, TimeFilter, odo=true
-    # Subsequent posts also add: GridCurrentStartRow, GridCurrentPageRows, GridCurrentPage
-    # Initial load Post: id=1 (no idea why it sends this)
+    # Post: NewsReelFilter, TimeFilter, odo=true, GridCurrentStartRow,
+    #       GridCurrentPageRows, GridCurrentPage
     NEWS_REEL = 54
 
-# Combines as a colon delimited list of sorted numbers
+# Combines as a sorted colon delimited list of the integer values
 class NewsReelFilter(IntEnum):
     BINDS = 0
     PROXIMITY = 1
