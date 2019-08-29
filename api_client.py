@@ -644,6 +644,11 @@ class ApiClient(object):
                 )
                 text = event_element.find('./Text').text
                 result.append((latest_timedata, text))
+            # The total number of entries will grow because of new messages arriving and also shrink
+            # because after a certain amount of messages it drops some older entries.  Due to this, you
+            # can't really be sure how many duplicates you're going to get.  You do, however, know that
+            # your offset into the data remains correct... so whenever your offset exceeds the most recently
+            # reported total, you're done.
             if oldest_timestamp is None or latest_timedata < oldest_timestamp or (start_row + page_row_count) > total_rows:
                 # Either only getting one page because no timestamp limit specified, the most recent timedata
                 # is earlier than the oldest requested so no more pages are needed, or no pages left to request.
