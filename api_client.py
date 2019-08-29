@@ -203,6 +203,9 @@ class ApiHttpConnection(object):
         response = response_object.read()
         return (dict(response_object.headers), response)
         
+    def connected(self):
+        return (self.connection is not None)
+
     def close(self):
         if self.connection:
             self.connection.close()
@@ -237,16 +240,16 @@ class ApiClient(object):
     def clear_session(self):
         self.session_key = None
         self.clan_id = None
-
+    
     def disconnect(self):
-        self.clear_session()
-        if self.connection:
+        if self.connection.connected():
             self.connection.close()
-            self.connection = None
+        self.clear_session()
         self.cookie = None
         
     def __init__(self, web_url, session_file=None, mock_set=None, option_set=None):
-        self.web_url = web_url
+        self.connection = ApiHttpConnection()
+        self.set_web_url(web_url)
         self.mock_set = set(mock_set) if (mock_set is not None) else set()
         # it never makes sense for ERROR to not be mocked... you'd always be expecting
         # success, thus an error is only useful here in testing/mocking.
@@ -255,9 +258,12 @@ class ApiClient(object):
             ClientOption.PRINT_APIERROR
         }
         self.session_file = session_file
-        self.connection = None
         self.disconnect()
     
+    def set_web_url(self, web_url):
+        self.web_url = web_url
+        self.connection.set_url(self.web_url)
+        
     def default_url(self):
         return self.connection.get_request_url()
         
@@ -274,17 +280,6 @@ class ApiClient(object):
             ('RequestOwner', RequestOwner.LOGIN.value)  # Specified again to match client behavior.
         ])
         return self.connection.get_request_url(query=query)
-    
-    def connect(self):
-        self.disconnect()
-        self.connection = ApiHttpConnection()
-        self.connection.set_url(self.web_url)
-        # if mocking only, skip connecting... it would be pointless.
-        if ClientOption.MOCKING_ONLY not in self.option_set:
-            self.connection.connect()
-        else:
-            print('Skipping connection request because MOCKING_ONLY is set.')
-        return self.connection
 
     @staticmethod
     def get_mock_filename(mock_name, mock_category, level=0):
@@ -335,6 +330,8 @@ class ApiClient(object):
         else:
             if ClientOption.MOCKING_ONLY in self.option_set:
                 raise RuntimeError(f"MOCKING_ONLY is set, cannot make actual request: {request_url}")
+            if not self.connection.connected():
+                self.connection.connect()
             # Add any cookie
             if self.cookie:
                 if headers is None:
@@ -449,25 +446,31 @@ class ApiClient(object):
         return self.session_key
     
     def load_session(self):
-        try:
-            with open(self.session_file) as handle:
-                session = json.loads(handle.read()).get('Session',{})
-        except FileNotFoundError:
-            session = {}
-        new_session_key = session.get('SessionKey', None)
-        new_clan_id = session.get('ClanID', None)
-        if new_session_key and new_clan_id:
-            if self.use_session(new_session_key, new_clan_id):
+        if ClientOption.MOCKING_ONLY in self.option_set:
+            print('Mocking only; Not loading session from file')
+            self.session_key = None
+        else:
+            try:
+                with open(self.session_file) as handle:
+                    session = json.loads(handle.read()).get('Session',{})
+            except FileNotFoundError:
+                session = {}
+            new_session_key = session.get('SessionKey', None)
+            new_clan_id = session.get('ClanID', None)
+            if new_session_key and new_clan_id:
+                if self.use_session(new_session_key, new_clan_id):
+                    if ClientOption.PRINT_SESSION in self.option_set:
+                        print(f"Session was loaded from file: {self.session_file}")
+            if not self.session_key:
                 if ClientOption.PRINT_SESSION in self.option_set:
-                    print(f"Session was loaded from file: {self.session_file}")
-        if not self.session_key:
-            if ClientOption.PRINT_SESSION in self.option_set:
-                print(f"Session in file is not valid: {self.session_file}")
+                    print(f"Session in file is not valid: {self.session_file}")
         return self.session_key
         
     def save_session(self):
         global JSON_INDENT
-        if self.session_file:
+        if ClientOption.MOCKING_ONLY in self.option_set:
+            print('Mocking only; Not saving session to file')
+        elif self.session_file:
             json_string = json.dumps(
                 {
                     'Session':{
