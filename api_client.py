@@ -21,7 +21,7 @@ JSON_INDENT = 4
 class ApiError(Exception):
     pass
 
-# This isn't passed anywhere, it's values are just used in comparisons.
+# This isn't passed anywhere, its values are just used in comparisons.
 class ApiMessage(Enum):
     TEMPORARY_BAN = 'You have been temporarily banned, please check the email you have registered to this account for further details.(#3)'
     BAD_ATTRIBUTES = 'Missing Or Invalid Required Attributes. Please check and try again.'
