@@ -3,7 +3,7 @@
   <RequestID Value="6D2576BC71E1E30C4C36F41B23BC738E.3920136"/>
   <ResultNode>
     <Result>
-      <Message>You have been temporarily banned, please check the email you have registered to this account for further details.(#3)</Message>
+      <Message>Missing Or Invalid Required Attributes. Please check and try again.</Message>
     </Result>
   </ResultNode>
 </RootNode>

@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<RootNode>
+<ObjectName>
+	<SFString Value="Overview"/>
+</ObjectName>
+<df592738975 df107948948="df135454950" name="df244844709y7XFHMVkYnALttvhk6mp8pZnqM43rCsT100">
+	<df307206822>		
+		<df135454950>
+			<df54054893>
+				<df929108305 df107948948="df930922610">
+					<df1053203872>
+						<df948661592 df3781504="id">df228375678y7XFHMVkYnALttvhk6mp8pZnqM43rCsT100</df948661592>	
+					</df1053203872>
+					<df117031449 df3781504="Motto" df80835235="Motto">
+						<df997723070 df541336717="OverviewNode">	
+							<df96558173 df3781504="displayContent">Motto</df96558173>	
+						</df997723070>
+					</df117031449>	
+					<df117031449 df3781504="LeaderFullName" df80835235="Leader Full Name">
+						<df997723070 df541336717="Player" df55872271="OverviewNode">	
+							<df96558173 df3781504="displayContent">FullName</df96558173>	
+						</df997723070>
+					</df117031449>
+					<df117031449 df3781504="MembersNumber" df80835235="Members">
+						<df997723070 df541336717="OverviewNode">	
+							<df96558173 df3781504="displayContent">MembersNumber</df96558173>	
+						</df997723070>
+					</df117031449>
+					<df117031449 df3781504="Holdings" df80835235="Holdings">
+						<df997723070 df541336717="OverviewNode">	
+							<df96558173 df3781504="displayContent">Holdings</df96558173>	
+						</df997723070>
+					</df117031449>
+					<df117031449 df3781504="Alignment" df803129329="plugin" df80835235="Alignment">
+						<df997723070 df541336717="OverviewNode">	
+							<df96558173 df3781504="displayContent">Alignment</df96558173>	
+						</df997723070>
+						<df929108305 df107948948="df81166550" df890125482="list">
+							<df525669465 df541336717="OverviewNode">
+								<df789865966 df3781504="id">Alignment</df789865966>											
+							</df525669465>					
+							<df1053203872>
+								<df948661592 df3781504="graphStyleBackground">graph-alignment-back-normal</df948661592>				
+								<df948661592 df3781504="graphStyle-Good">graph-alignment-good-normal</df948661592>				
+								<df948661592 df3781504="graphStyle-Evil">graph-alignment-evil-normal</df948661592>				
+								<df948661592 df3781504="min">-100</df948661592>				
+								<df948661592 df3781504="max">100</df948661592>				
+								<df948661592 df3781504="multiplier-Good">10</df948661592>				
+								<df948661592 df3781504="graph-Good-start">1</df948661592>				
+								<df948661592 df3781504="graph-Good-end">10</df948661592>
+								<df948661592 df3781504="multiplier-Good">10</df948661592>				
+								<df948661592 df3781504="graph-Good-Route">right</df948661592>				
+								<df948661592 df3781504="graph-Evil-start">-100</df948661592>				
+								<df948661592 df3781504="graph-Evil-end">-1</df948661592>				
+								<df948661592 df3781504="graph-Evil-Route">left</df948661592>				
+								<df948661592 df3781504="graphs">Good,Evil</df948661592>				
+							</df1053203872>
+						</df929108305>
+					</df117031449>
+					<df117031449 df3781504="Races" df80835235="Races">
+						<df997723070 df541336717="OverviewNode">	
+							<df96558173 df3781504="displayContent">Races</df96558173>	
+						</df997723070>
+					</df117031449>
+					<df58334459>
+					<![CDATA[
+					<table width="750" border="0" cellpadding="0" cellspacing="0" height="279">
+					  <tr>
+					    <td width="41" height="14"><img src="{ImagePath}images/overview_top_left1.gif" border="0"></td>
+					    <td background="{ImagePath}images/overview_top_middle.gif"></td>
+					    <td width="41" height="14"><img src="{ImagePath}images/overview_top_right1.gif" border="0"></td>
+					  </tr>
+					  <tr>
+					    <td width="41" height="9" background="{ImagePath}images/overview_top_left2.gif" style="font-size:0px;">&nbsp;</td>
+					    <td rowspan="3" background="{ImagePath}images/background_dark.jpg" width="668">
+					  
+					    <div>
+						<table cellpadding="0" cellspacing="0" border="0">
+						<tr><td align="left" valign="top" background="{ImagePath}images/background_dark.jpg" width="286" valign="top">
+						<div align="left" style="position:relative;height:275px;width:286px;background:url({ImagePath}images/overview_motto_background.gif) no-repeat;">						
+						<div style="position:absolute;left:40px;top:35px;width:150px;WORD-BREAK:BREAK-ALL;color:white" align="center"><!--{Motto.data}--></div>
+						</div>
+						</td>
+						<td valign="top" align="left">
+						
+						<div>
+						<table cellpadding="4" cellspacing="4" border="0" align=center>
+						<tr class='overview_back'><td>Leader Full Name</td><td style="color:white"><div style="WORD-BREAK:BREAK-ALL;"><!--{LeaderFullName.data}--></div></td></tr>
+						<tr><td width=105>Members</td><td style="color:white"><!--{MembersNumber.data}--></td></tr>
+						<tr class='overview_back'><td>Holdings</td><td style="color:white"><!--{Holdings.data}--></td></tr>
+						<tr><td>Alignment</td><td style="color:white"><!--{Alignment.data}--></td></tr>
+						<tr class='overview_back'><td>Races</td><td style="color:white"><!--{Races.data}--></td></tr>
+						</table>
+						</div>
+						</td></tr></table>
+						
+						</div>&nbsp;
+					    </td>
+					    <td width="41" height="9" background="{ImagePath}images/overview_top_right2.gif" style="font-size:0px;">&nbsp;</td>
+					  </tr>
+					  <tr>
+					    <td width="41" height="90" background="{ImagePath}images/overview_left_tile.gif" style="font-size:0px;">&nbsp;</td>
+					    <td width="41" height="90" background="{ImagePath}images/overview_right_tile.gif" style="font-size:0px;"><div>&nbsp;</div></td>
+					  </tr>
+					  <tr>
+					    <td height="192" background="{ImagePath}images/overview_bottom_left2.gif" valign="bottom"><div style="border:0px solid red;height:192px;">&nbsp;</div></td>
+					    <td height="192" background="{ImagePath}images/overview_bottom_right2.gif"><div>&nbsp;</div></td>
+					  </tr>
+					  <tr>
+					    <td height="14"><img src="{ImagePath}images/overview_bottom_left1.gif" border="0"></td>
+					    <td background="{ImagePath}images/overview_bottom_middle.gif"></td>
+					    <td><img src="{ImagePath}images/overview_bottom_right1.gif" border="0"></td>
+					  </tr>
+					</table>
+					
+					]]>
+					</df58334459>							
+				</df929108305>
+			</df54054893>
+		</df135454950>		
+		<df773225941>
+		<![CDATA[
+		<br>		
+		<!--{df228375678y7XFHMVkYnALttvhk6mp8pZnqM43rCsT100}-->	
+		]]>
+		</df773225941>
+	</df307206822>
+	<ObjectData>
+      <OverviewNode>
+        <Motto>Extraordinary claims require extraordinary evidence</Motto>
+        <ClanName>Mathletes</ClanName>
+        <Player>
+          <CharacterID>123</CharacterID>
+          <FullName>Carl Sagan</FullName>
+        </Player>
+        <MembersNumber>137</MembersNumber>
+        <Holdings>13</Holdings>
+        <PopularityScore>-8</PopularityScore>
+        <Alignment>932</Alignment>
+        <Races>Human,Alfar,Mirdain,Mahirim,Ork,Dwarf</Races>
+      </OverviewNode>
+    </ObjectData>
+</df592738975>
+<RequestID Value="6D2576BC71E1E30C4C36F41B23BC738E.3920136"/>
+</RootNode>

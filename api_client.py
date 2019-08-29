@@ -25,10 +25,10 @@ class ApiError(Exception):
 class ApiMessage(Enum):
     TEMPORARY_BAN = 'You have been temporarily banned, please check the email you have registered to this account for further details.(#3)'
     BAD_ATTRIBUTES = 'Missing Or Invalid Required Attributes. Please check and try again.'
+    INSUFFICIENT_PERMISSION = 'You do not have the sufficient access to perform this operation.'
     GUARD_POLICY_CHANGED = 'The Guard policy has been changed.'
     BANK_POLICY_CHANGED = 'The bank policy for all your clan cities has been changed.'
     INVALID_CREDENTIALS = 'Invalid username or password.(#3)'
-    INSUFFICIENT_PERMISSION = 'You do not have the sufficient access to perform this operation.'
 
 class RequestOwner(Enum):
     LOGIN = 'EXTBRM'

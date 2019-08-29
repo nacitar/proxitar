@@ -2,10 +2,9 @@
 <RootNode>
   <VersionInformation Incremental="1" Major="0" Minor="0"/>
   <RequestID Value="6D2576BC71E1E30C4C36F41B23BC738E.3920136"/>
-  <RequestURI>/spenefett/fwd</RequestURI>
-  <WebGateRequest>1</WebGateRequest>
-  <RequestOwner>EXTBRM</RequestOwner>
-  <ObjectData>
-    <Logout>true</Logout>
-  </ObjectData>
+  <ClanBannerNode>
+    <ClanBannerUrl>clan_banner_default.jpg</ClanBannerUrl>
+    <ClanName>Mathletes</ClanName>
+    <ClanID>123</ClanID>
+  </ClanBannerNode>
 </RootNode>
