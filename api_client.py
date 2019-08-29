@@ -191,7 +191,7 @@ class ApiHttpConnection(object):
             except http.client.RemoteDisconnected as e:
                 if new_connection:
                     # it happened twice, it isn't just the keep-alive expiring
-                    raise  # let is propagate up
+                    raise  # let it propagate up
                 self.connect()
                 new_connection = True
                 continue # run it one more time with the new connection
