@@ -593,9 +593,9 @@ class ApiClient(object):
     # already read from the end of the prior page.  There's not any great way to work around this
     # and depending upon which message type you're tracking, there's not an obvious answer how to
     # handle deduplicating it... so the duplicates are provided as-is.  The caller must handle that.
-    def get_news_reel(self, news_reel_filter, time_filter, oldest_event_time=None, multipage_delay_seconds=None):
+    def get_news_reel(self, news_reel_filter, time_filter, oldest_timestamp=None, multipage_delay_seconds=None):
         if isinstance(news_reel_filter, NewsReelFilter):
-            news_reel_filter_value = str(news_reel_filter.value)
+            news_reel_filter_value = str(news_reel_filter)
         else:
             news_reel_filter_value = ':'.join([str(entry.value) for entry in sorted(news_reel_filter)])
         common_form_data = [
@@ -606,12 +606,7 @@ class ApiClient(object):
         form_data = list(common_form_data)
         page = 1
         result = []
-        newest_processed_event_time = None
-        newest_time_events = set()
-        oldest_time_events = set()
-        
-        page_edge_event_time = None
-        done = False
+        latest_timedata = None
         while True:
             web_gate_request = ClanWebGateRequest.NEWS_REEL
             suffix = f".{page}" if page > 1 else ''
@@ -646,77 +641,25 @@ class ApiClient(object):
                 ('GridCurrentPage', page)  # actually the page you want to go to, not 'current'
             ])
             event_elements = root_element.findall('./ObjectData/Events/Event')
-            if not event_elements:
-                # should never happen unless the server JUST came up, or we requested too many pages
-                # and we shouldn't ever do that.
-                break
-            # guaranteed at this point to have a least one event
             for event_element in event_elements:
-                event_time = datetime.strptime(
+                latest_timedata = datetime.strptime(
                     event_element.find('./TimeData').text,
                     '%Y-%m-%d %H:%M:%S'
                 )
-                event_text = event_element.find('./Text').text
-                
-                if newest_processed_event_time is None:
-                    newest_processed_event_time = event_time
-                    oldest_processed_event_time = event_time
-                elif event_time > newest_processed_event_time or (
-                        # have read times other than this one
-                        oldest_processed_event_time != newest_processed_event_time and
-                        # is the message text new
-                        event_time == newest_processed_event_time and event_text not in newest_time_events):
-                    # we got a newer event on a subsequent page; enough events happened to push
-                    # a newer event onto this page.  Rather than restart, a simple way to ensure
-                    # that things proceed correctly is to clear the results and just let it begin
-                    # gathering on this page.  In theory, if enough events happened in rapid succession
-                    # for long enough, you could end up getting to the last page without catching up
-                    # before the events get purged... but in reality this won't ever happen.
-                    newest_processed_event_time = event_time
-                    oldest_processed_event_time = event_time
-                    page_edge_event_time = None
-                    result.clear()
-                    newest_time_events.clear()
-                    oldest_time_events.clear()
-                elif event_time < oldest_processed_event_time:
-                    oldest_processed_event_time = event_time
-                    oldest_time_events.clear()
-                
-                # only get 1 second (plus newer events) of data if given no time limit (prevents spam)
-                if oldest_event_time is None:
-                    oldest_event_time = event_time
-                elif event_time < oldest_event_time:
-                    # terminate early; older data not requested
-                    done = True
-                    break
-                
-                # No edge, older message than the edge, or event_text for the edge
-                if page_edge_event_time is None or event_time < page_edge_event_time or (
-                        # we may get newer messages after a page boundary, but
-                        # we'll never get older.. so at this point page_edge_event_time
-                        # will match oldest_processed_event_time
-                        event_time == page_edge_event_time and event_text not in oldest_time_events):
-                    # add it!
-                    result.append((event_time, event_text))
-                    if event_time == newest_processed_event_time:
-                        newest_time_events.add(event_text)
-                    if event_time == oldest_processed_event_time:
-                        oldest_time_events.add(event_text)
-            page_edge_event_time = event_time  # guaranteed set
+                text = event_element.find('./Text').text
+                result.append((latest_timedata, text))
             # The total number of entries will grow because of new messages arriving and also shrink
             # because after a certain amount of messages it drops some older entries.  Due to this, you
             # can't really be sure how many duplicates you're going to get.  You do, however, know that
             # your offset into the data remains correct... so whenever your offset exceeds the most recently
             # reported total, you're done.
-            if done or (start_row + page_row_count) > total_rows:
+            if oldest_timestamp is None or latest_timedata < oldest_timestamp or (start_row + page_row_count) > total_rows:
                 # Either only getting one page because no timestamp limit specified, the most recent timedata
                 # is earlier than the oldest requested so no more pages are needed, or no pages left to request.
                 break
             if multipage_delay_seconds is not None:
                 # In case you know you're going to be retrieving a lot of pages and don't want spam requests too quickly
                 time.sleep(multipage_delay_seconds)
-        # make it chronological
-        result.reverse()
         return result
         
     def get_bank_policy(self):
