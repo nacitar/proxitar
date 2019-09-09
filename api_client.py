@@ -593,7 +593,7 @@ class ApiClient(object):
     # already read from the end of the prior page.  There's not any great way to work around this
     # and depending upon which message type you're tracking, there's not an obvious answer how to
     # handle deduplicating it... so the duplicates are provided as-is.  The caller must handle that.
-    def get_news_reel(self, news_reel_filter, time_filter, oldest_timestamp=None, multipage_delay_seconds=None):
+    def get_news_reel(self, news_reel_filter, time_filter, oldest_event_time=None, multipage_delay_seconds=None):
         if isinstance(news_reel_filter, NewsReelFilter):
             news_reel_filter_value = str(news_reel_filter)
         else:
@@ -604,12 +604,11 @@ class ApiClient(object):
             ('odo', 'true')  # Specified to match client behavior; no idea why this is sent.
         ]
         form_data = list(common_form_data)
-        page = 1
+        page_number = 1
         result = []
-        latest_timedata = None
         while True:
             web_gate_request = ClanWebGateRequest.NEWS_REEL
-            suffix = f".{page}" if page > 1 else ''
+            suffix = f".{page_number}" if page_number > 1 else ''
             root_element = self.request(
                 query=[
                     ('SessionKey', self.session_key),
@@ -623,8 +622,8 @@ class ApiClient(object):
                 expect_xml=True
             )
             if ClientOption.PRINT_NEWS_REEL in self.option_set:
-                print(f"Loaded news reel page {page}")
-            page += 1
+                print(f"Loaded news reel page {page_number}")
+            page_number += 1
             start_row_element = root_element.find('./ObjectData/GridCurrentStartRow')
             row_per_page_element = root_element.find('./ObjectData/GridRowPerPage')
             current_page_rows_element = root_element.find('./ObjectData/GridCurrentPageRows')
@@ -638,22 +637,25 @@ class ApiClient(object):
             form_data.extend([
                 ('GridCurrentStartRow', start_row),
                 ('GridCurrentPageRows', page_row_count),
-                ('GridCurrentPage', page)  # actually the page you want to go to, not 'current'
+                ('GridCurrentPage', page_number)  # actually the page you want to go to, not 'current'
             ])
             event_elements = root_element.findall('./ObjectData/Events/Event')
-            for event_element in event_elements:
-                latest_timedata = datetime.strptime(
-                    event_element.find('./TimeData').text,
-                    '%Y-%m-%d %H:%M:%S'
-                )
-                text = event_element.find('./Text').text
-                result.append((latest_timedata, text))
+            page = [
+                (
+                    datetime.strptime(
+                        event_element.find('./TimeData').text,
+                        '%Y-%m-%d %H:%M:%S'
+                    ),
+                    event_element.find('./Text').text
+                ) for event_element in event_elements]
+            result.append(page)
+            
             # The total number of entries will grow because of new messages arriving and also shrink
             # because after a certain amount of messages it drops some older entries.  Due to this, you
             # can't really be sure how many duplicates you're going to get.  You do, however, know that
             # your offset into the data remains correct... so whenever your offset exceeds the most recently
             # reported total, you're done.
-            if oldest_timestamp is None or latest_timedata < oldest_timestamp or (start_row + page_row_count) > total_rows:
+            if not page or oldest_event_time is None or page[-1][0] < oldest_event_time or (start_row + page_row_count) > total_rows:
                 # Either only getting one page because no timestamp limit specified, the most recent timedata
                 # is earlier than the oldest requested so no more pages are needed, or no pages left to request.
                 break
