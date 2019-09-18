@@ -7,11 +7,11 @@ class HoldingState(object):
     def __init__(self):
         self.players = {}
     
-    def proximity_event(self, name, present, clan_rank_tuple):
+    def proximity_event(self, name, present, clan, rank):
         if name in self.players:
             del self.players[name]
         if present:
-            self.players[name] = clan_rank_tuple
+            self.players[name] = (clan, rank)
 
 # TODO: keep up with name ==> clan, rank mapping separately from proximity
 class NewsReelMonitor(object):
@@ -39,7 +39,7 @@ class NewsReelMonitor(object):
             self._current_request_processed_players.add(name)
             
             holding_state = self.holding_state(holding)
-            holding_state.proximity_event(name, is_enter, (clan, rank))
+            holding_state.proximity_event(name, is_enter, clan, rank)
             
             # TODO: determine if the state is NEW (using return of holding_state.proximity_event?)
             # TODO: 'unique' counts
