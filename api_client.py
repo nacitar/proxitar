@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 import time
 import hashlib
+import re
 import xml.etree.ElementTree as ET
 from enum import Enum, auto, IntEnum
 from collections import deque
@@ -646,7 +647,8 @@ class ApiClient(object):
                         event_element.find('./TimeData').text,
                         '%Y-%m-%d %H:%M:%S'
                     ),
-                    event_element.find('./Text').text
+                    # strip colors from the message (e.g: ^Cblue^)
+                    re.sub('\^C.*\^', '', event_element.find('./Text').text)
                 ) for event_element in event_elements]
             result.append(page)
             
