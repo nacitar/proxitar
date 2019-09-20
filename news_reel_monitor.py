@@ -2,18 +2,45 @@
 import api_client
 import re
 MONITORED_CATEGORIES = [api_client.NewsReelFilter.PROXIMITY, api_client.NewsReelFilter.RESOURCES]
-     
+ 
+class ResourceState(object):
+    def __init__(self):
+        self.player_hits = {}
+        self.last_hit = None
+    
+    def hit(self, event_time, name):
+        if name in self.player_hits:
+            hits = self.player_hits[name]
+        else:
+            self.player_hits[name] = hits = set()
+        if event_time not in hits:
+            hits.add(event_time)
+            if self.last_hit is None or event_time > self.last_hit:
+                self.last_hit = event_time
+            return True
+        return False
+        
 class HoldingState(object):
     def __init__(self):
-        self.players = {}
+        self.players = set()
+        self.resources = {}
     
-    def proximity_event(self, name, present, clan, rank):
-        if name in self.players:
-            del self.players[name]
+    def proximity_event(self, name, present):
+        was_present = name in self.players
+        if was_present:
+            self.players.remove(name)
         if present:
-            self.players[name] = (clan, rank)
+            self.players.add(name)
+        return (was_present != present)
+        
+    def resource_event(self, event_time, name, resource):
+        if resource in self.resources:
+            resource_state = self.resources[resource]
+        else:
+            self.resources[resource] = resource_state = ResourceState()
+        return resource_state.hit(event_time, name)
 
-# TODO: keep up with name ==> clan, rank mapping separately from proximity
+# TODO: 'unique' players, per-holding stuff, output pages, ...
 class NewsReelMonitor(object):
     def __init__(self, client):
         self.client = client
@@ -21,6 +48,7 @@ class NewsReelMonitor(object):
         self._clan_name = None
         self._current_request_processed_players = set()
         self._holding_state = {}
+        self._name_to_clan_info = {}
     
     def clan_name(self):
         if not self._clan_name:
@@ -32,25 +60,32 @@ class NewsReelMonitor(object):
             self._holding_state[holding] = HoldingState()
         return self._holding_state[holding]
 
-    def _on_proximity_event(self, event_time, name, rank, clan, is_enter, holding):
+    def _on_player_info(self, name, clan, rank):
+        # only invoked when we know the info is the most recent
+        self._name_to_clan_info[name] = (clan, rank)
+    
+    def _on_proximity_event(self, event_time, name, clan, rank, is_enter, holding):
         is_enter_string = 'entered' if is_enter else 'left'
         if name not in self._current_request_processed_players:
             # not an older event/state.
             self._current_request_processed_players.add(name)
-            
+            # update the name to clan info mapping
+            self._on_player_info(name, clan, rank)
             holding_state = self.holding_state(holding)
-            holding_state.proximity_event(name, is_enter, clan, rank)
-            
-            # TODO: determine if the state is NEW (using return of holding_state.proximity_event?)
-            # TODO: 'unique' counts
-            print(f'{event_time} Proximity: [{clan}:{rank}] {name} {is_enter_string} {holding}')
-            print(f'STATE: {holding} {holding_state.players}')
+            if holding_state.proximity_event(name, is_enter):
+                # if this is a state change
+                print(f'{event_time} Proximity: [{clan}:{rank}] {name} {is_enter_string} {holding}')
+                print(f'STATE: {holding} {holding_state.players}')
         
-    def _on_resource_event(self, event_time, name, rank, clan, resource, holding):
+    def _on_resource_event(self, event_time, name, clan, rank, resource, holding):
         if rank and not clan:
             clan = self.clan_name()
-        # TODO: figure out what should be done here
-        print(f'{event_time} Resource: [{clan}:{rank}] {name} hit {holding} {resource}')
+        if name not in self._current_request_processed_players:
+            self._on_player_info(name, clan, rank)
+        holding_state = self.holding_state(holding)
+        if holding_state.resource_event(event_time, name, resource):
+            print(f'{event_time} Resource: [{clan}:{rank}] {name} hit {holding} {resource}')
+            print(f'STATE: {holding} {holding_state.resources[resource].player_hits}')
     
     def _on_unknown_event(self, event_time, event_text):
         print(f'UNKNOWN MESSAGE: {event_time} {event_text}')
@@ -90,8 +125,8 @@ class NewsReelMonitor(object):
                         self._on_proximity_event(
                                 event_time,
                                 name,
-                                proximity_match.group('rank'),
                                 proximity_match.group('clan'),
+                                proximity_match.group('rank'),
                                 (proximity_match.group('state') != 'left'),
                                 proximity_match.group('holding'))
                     else:
@@ -105,8 +140,8 @@ class NewsReelMonitor(object):
                             self._on_resource_event(
                                     event_time,
                                     resource_match.group('name'),
-                                    resource_match.group('rank'),
                                     resource_match.group('clan'),
+                                    resource_match.group('rank'),
                                     resource_match.group('resource'),
                                     resource_match.group('holding')
                             )

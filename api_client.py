@@ -202,7 +202,7 @@ class ApiHttpConnection(object):
             print(f"Url: {url}")
             print(f"Post data: {form_data}")
         response = response_object.read()
-        return (dict(response_object.headers), response)
+        return (response_object.status, dict(response_object.headers), response)
         
     def connected(self):
         return (self.connection is not None)
@@ -338,7 +338,7 @@ class ApiClient(object):
                 if headers is None:
                     headers = {}
                 headers['Cookie'] = self.cookie
-            response_headers, response_content = self.connection.request(
+            status, response_headers, response_content = self.connection.request(
                     # use the default path
                     query=query,
                     form_data=form_data,
@@ -394,6 +394,8 @@ class ApiClient(object):
                 # the decoded message can itself be (and afaik always is) xml, so, a
                 # simple way to resolve this is to just repeat the logic
                 continue
+            if not response_content:
+                print(f"BLANK RESPONSE: STATUS = {status}, HEADERS = {response_headers}")
             if expect_xml == True:
                 raise TypeError("Response expected to be xml, but it is not.")
             return response_content
