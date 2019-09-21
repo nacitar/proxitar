@@ -85,7 +85,7 @@ class NewsReelMonitor(object):
         holding_state = self.holding_state(holding)
         if holding_state.resource_event(event_time, name, resource):
             print(f'{event_time} Resource: [{clan}:{rank}] {name} hit {holding} {resource}')
-            print(f'STATE: {holding} {holding_state.resources[resource].player_hits}')
+            print(f'STATE: {holding} {list(holding_state.resources[resource].player_hits.keys())}')
     
     def _on_unknown_event(self, event_time, event_text):
         print(f'UNKNOWN MESSAGE: {event_time} {event_text}')
@@ -109,9 +109,10 @@ class NewsReelMonitor(object):
                         # break out of these loops.
                         break
                     # common
-                    rank_pattern = '(?P<rank>Recruit|Private|Corporal|Sergeant|Lieutenant|Captain|Major|Colonel|(Supreme)?General)'
+                    common_ranks='Recruit|Private|Corporal|Sergeant|Lieutenant|Captain|Major|Colonel|General'
                     name_pattern = '(?P<name>[^ ]+ [^ ]+)'
                     # proximity
+                    rank_pattern = f'(?P<rank>{common_ranks}|SupremeGeneral)'  # proximity has no space in "SupremeGeneral"
                     clan_pattern = 'from (the Clan of|our clan the) (?P<clan>.+?)'
                     unclanned_name_pattern = '(?P<unclanned_name>[^ ]+ [^ ]+)'
                     state_pattern = '(has )?(?P<state>left|been spotted in|entered)'
@@ -131,17 +132,21 @@ class NewsReelMonitor(object):
                                 proximity_match.group('holding'))
                     else:
                         # resource
+                        rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"
                         resource_pattern = 'is gathering resources from our (?P<resource>.+)'
                         holding_pattern = 'in (?P<holding>.+)'
                         clan_pattern = 'from the (?P<clan>.+?)'
                         resource_pattern = f'^({rank_pattern} )?{name_pattern}( {clan_pattern})? {resource_pattern} {holding_pattern}\\.$'
                         resource_match = re.match(resource_pattern, event_text)
+                        rank = resource_match.group('rank')
+                        if rank == 'Supreme General':
+                            rank = 'SupremeGeneral'  # make it match proximity
                         if resource_match:
                             self._on_resource_event(
                                     event_time,
                                     resource_match.group('name'),
                                     resource_match.group('clan'),
-                                    resource_match.group('rank'),
+                                    rank,
                                     resource_match.group('resource'),
                                     resource_match.group('holding')
                             )
