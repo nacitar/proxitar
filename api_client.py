@@ -107,6 +107,7 @@ class ClientOption(Enum):
     PRINT_SESSION = auto()
     PRINT_CLAN_ID = auto()
     PRINT_NEWS_REEL = auto()
+    PRINT_DEBUG = auto()
     MOCKING_ONLY = auto()
     WRITE_MISSING_MOCKS = auto()
 
@@ -215,6 +216,8 @@ class ApiHttpConnection(object):
 # TODO: consider _requiring_ mock_name
 class ApiClient(object):
     """ Connects to the server and manages the session. """
+    
+    SERVER_ERROR_RETRY_COUNT = 10
     
     @staticmethod
     def flattened_child_element_text_mapping(element):
@@ -338,14 +341,26 @@ class ApiClient(object):
                 if headers is None:
                     headers = {}
                 headers['Cookie'] = self.cookie
-            status, response_headers, response_content = self.connection.request(
-                    # use the default path
-                    query=query,
-                    form_data=form_data,
-                    headers=headers,
-                    referer=referer,
-                    print_request=(ClientOption.PRINT_REQUEST in self.option_set)
-            )
+            attempt = 0
+            while True:
+                status, response_headers, response_content = self.connection.request(
+                        # use the default path
+                        query=query,
+                        form_data=form_data,
+                        headers=headers,
+                        referer=referer,
+                        print_request=(ClientOption.PRINT_REQUEST in self.option_set)
+                )
+                # sometimes the server sends a 302 Found response with a Location of 'about:blank'...
+                # this is a server error, just try again and eventually throw.
+                if status != 302:
+                    break
+                if attempt < ApiClient.SERVER_ERROR_RETRY_COUNT:
+                    attempt += 1
+                else:
+                    raise ApiError(f'Server response status was 302, indicating an error even after {ApiClient.SERVER_ERROR_RETRY_COUNT} attempts.  Assuming server is down.')
+                if ClientOption.PRINT_DEBUG in self.option_set:
+                    print(f'Server Error Status 302, retry number {attempt}')
             # write missing mocks, if necessary
             # needs the bytes type response, so do this before decoding
             if mockable and ClientOption.WRITE_MISSING_MOCKS in self.option_set:
@@ -394,8 +409,6 @@ class ApiClient(object):
                 # the decoded message can itself be (and afaik always is) xml, so, a
                 # simple way to resolve this is to just repeat the logic
                 continue
-            if not response_content:
-                print(f"BLANK RESPONSE: STATUS = {status}, HEADERS = {response_headers}")
             if expect_xml == True:
                 raise TypeError("Response expected to be xml, but it is not.")
             return response_content

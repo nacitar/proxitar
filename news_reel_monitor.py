@@ -2,7 +2,9 @@
 import api_client
 import re
 MONITORED_CATEGORIES = [api_client.NewsReelFilter.PROXIMITY, api_client.NewsReelFilter.RESOURCES]
- 
+
+# TODO: do we really want to store all the offsets/player_hits... or do we JUST want the last_hit?
+# TODO: allow separate connections for resources and proximity?
 class ResourceState(object):
     def __init__(self):
         self.player_hits = {}
@@ -39,8 +41,15 @@ class HoldingState(object):
         else:
             self.resources[resource] = resource_state = ResourceState()
         return resource_state.hit(event_time, name)
-
-# TODO: 'unique' players, per-holding stuff, output pages, ...
+  
+def nested_dict(dict_object, key):
+    if key in dict_object:
+        value = dict_object[key]
+    else:
+        value = {}
+        dict_object[key] = value
+    return value
+# TODO: 'unique' players, output pages, ...
 class NewsReelMonitor(object):
     def __init__(self, client):
         self.client = client
@@ -57,44 +66,53 @@ class NewsReelMonitor(object):
     
     def holding_state(self, holding):
         if holding not in self._holding_state:
-            self._holding_state[holding] = HoldingState()
+            self._holding_state[holding] = state = HoldingState()
+            return state
         return self._holding_state[holding]
 
-    def _on_player_info(self, name, clan, rank):
+    def _set_player_info(self, name, clan, rank):
         # only invoked when we know the info is the most recent
         self._name_to_clan_info[name] = (clan, rank)
     
-    def _on_proximity_event(self, event_time, name, clan, rank, is_enter, holding):
+    def _process_proximity_event(self, event_time, name, clan, rank, is_enter, holding):
         is_enter_string = 'entered' if is_enter else 'left'
         if name not in self._current_request_processed_players:
             # not an older event/state.
             self._current_request_processed_players.add(name)
             # update the name to clan info mapping
-            self._on_player_info(name, clan, rank)
+            self._set_player_info(name, clan, rank)
             holding_state = self.holding_state(holding)
             if holding_state.proximity_event(name, is_enter):
-                # if this is a state change
-                print(f'{event_time} Proximity: [{clan}:{rank}] {name} {is_enter_string} {holding}')
-                print(f'STATE: {holding} {holding_state.players}')
+                # this is a state change
+                #print(f'{event_time} Proximity: [{clan}:{rank}] {name} {is_enter_string} {holding}')
+                #print(f'STATE: {holding} {holding_state.players}')
+                return True
+            return False
         
-    def _on_resource_event(self, event_time, name, clan, rank, resource, holding):
+    def _process_resource_event(self, event_time, name, clan, rank, resource, holding):
         if rank and not clan:
             clan = self.clan_name()
         if name not in self._current_request_processed_players:
-            self._on_player_info(name, clan, rank)
+            self._set_player_info(name, clan, rank)
         holding_state = self.holding_state(holding)
         if holding_state.resource_event(event_time, name, resource):
-            print(f'{event_time} Resource: [{clan}:{rank}] {name} hit {holding} {resource}')
-            print(f'STATE: {holding} {list(holding_state.resources[resource].player_hits.keys())}')
+            # previously unknown hit
+            #print(f'{event_time} Resource: [{clan}:{rank}] {name} hit {holding} {resource}')
+            #print(f'STATE: {holding} {list(holding_state.resources[resource].player_hits.keys())}')
+            return True
+        return False
     
     def _on_unknown_event(self, event_time, event_text):
         print(f'UNKNOWN MESSAGE: {event_time} {event_text}')
         
-    def check(self):
+    def check_for_changes(self):
         global MONITORED_CATEGORIES
         result = self.client.get_news_reel(MONITORED_CATEGORIES, api_client.TimeFilter.ONE_DAY, oldest_event_time = self.last_check_latest_event_time)
         latest_event_time = None
         self._current_request_processed_players = set()
+        
+        changed_proximity = {}
+        changed_resources = {}
         try:
             for page in result:
                 for event_time, event_text in page:
@@ -120,16 +138,21 @@ class NewsReelMonitor(object):
                     proximity_pattern = f'^({rank_pattern} {name_pattern} {clan_pattern}|{unclanned_name_pattern}) {state_pattern} {holding_pattern}\\.$'
                     proximity_match = re.match(proximity_pattern, event_text)
                     if proximity_match:
+                        holding = proximity_match.group('holding')
                         name = proximity_match.group('unclanned_name')
                         if not name:
                             name = proximity_match.group('name')
-                        self._on_proximity_event(
+                        is_enter = (proximity_match.group('state') != 'left')
+                        if self._process_proximity_event(
                                 event_time,
                                 name,
                                 proximity_match.group('clan'),
                                 proximity_match.group('rank'),
-                                (proximity_match.group('state') != 'left'),
-                                proximity_match.group('holding'))
+                                is_enter,
+                                holding):
+                            # { 'Holding' : { 'Player' : state } }
+                            player_state = nested_dict(changed_proximity, holding)
+                            player_state[name] = is_enter
                     else:
                         # resource
                         rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"
@@ -138,20 +161,26 @@ class NewsReelMonitor(object):
                         clan_pattern = 'from the (?P<clan>.+?)'
                         resource_pattern = f'^({rank_pattern} )?{name_pattern}( {clan_pattern})? {resource_pattern} {holding_pattern}\\.$'
                         resource_match = re.match(resource_pattern, event_text)
-                        rank = resource_match.group('rank')
-                        if rank == 'Supreme General':
-                            rank = 'SupremeGeneral'  # make it match proximity
                         if resource_match:
-                            self._on_resource_event(
+                            holding = resource_match.group('holding')
+                            name = resource_match.group('name')
+                            rank = resource_match.group('rank')
+                            if rank == 'Supreme General':
+                                rank = 'SupremeGeneral'  # make it match proximity
+                            resource = resource_match.group('resource')
+                            if self._process_resource_event(
                                     event_time,
-                                    resource_match.group('name'),
+                                    name,
                                     resource_match.group('clan'),
                                     rank,
-                                    resource_match.group('resource'),
-                                    resource_match.group('holding')
-                            )
+                                    resource,
+                                    holding):
+                                # { 'Holding' : { 'ResourceName' : { 'Player' : N-hits} } }
+                                resource_state = nested_dict(nested_dict(changed_resources, holding), resource)
+                                resource_state[name] = resource_state.get(name, 0) + 1
                         else:
                             self._on_unknown_event(event_time, event_text)
             self.last_check_latest_event_time = latest_event_time
         finally:
             self._current_request_processed_players.clear()
+        return (changed_proximity, changed_resources)
