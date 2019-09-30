@@ -96,10 +96,10 @@ class NewsReelMonitor(object):
             self._set_player_info(name, clan, rank)
             holding_state = self.holding_state(holding)
             result = holding_state.proximity_event(event_time, name, present)
-            #if result:
+            if result:
                 # this is a state change
-                #present_string = 'entered' if present else 'left'
-                #print(f'{event_time} Proximity: [{clan}:{rank}] {name} {present_string} {holding}')
+                present_string = 'entered' if present else 'left'
+                print(f'{event_time} Proximity: [{clan}:{rank}] {name} {present_string} {holding}')
                 #print(f'STATE: {holding} {holding_state.players}')
             return result
         
@@ -166,13 +166,13 @@ class NewsReelMonitor(object):
                                 holding)
                         if result:
                             player_state = nested_dict(changed_proximity, holding)
+                            # { 'Holding' : { 'Player' : (entry_time, exit_time) } }
                             if present:
                                 # { 'Holding' : { 'Player' : (present, time) } }
-                                player_state[name] = (present, event_time)
+                                player_state[name] = (event_time, None)
                             else:
                                 # result is the time the player previously entered
-                                # { 'Holding' : { 'Player' : (present, (entry_time, exit_time)) } }
-                                player_state[name] = (present, (result, event_time))
+                                player_state[name] = (result, event_time)
                     else:
                         # resource
                         rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"
