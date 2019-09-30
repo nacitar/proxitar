@@ -24,16 +24,27 @@ class ResourceState(object):
         
 class HoldingState(object):
     def __init__(self):
-        self.players = set()
+        self.players = {}  # value is the time that they entered
         self.resources = {}
     
-    def proximity_event(self, name, present):
-        was_present = name in self.players
-        if was_present:
-            self.players.remove(name)
-        if present:
-            self.players.add(name)
-        return (was_present != present)
+    def proximity_event(self, event_time, name, present):
+        try:
+            entry_time = self.players.pop(name)
+        except:
+            entry_time = None
+        if entry_time:
+            # player was present
+            if not present:  # player has left
+                # the time that the player entered, caller can determine duration of desired
+                return entry_time  # new event
+            # already knew the player was there
+        else:
+            # player was not present
+            if present:  # player has entered
+                self.players[name] = event_time
+                return True  # new event
+            # already knew the player was gone
+        return False  # old/duplicate event
         
     def resource_event(self, event_time, name, resource):
         if resource in self.resources:
@@ -65,9 +76,9 @@ class NewsReelMonitor(object):
         return self._clan_name
     
     def get_player_clan_info(self, name):
-        return self._name_to_clan_info.get(name)
+        return self._name_to_clan_info.get(name, (None, None))
 
-    def _holding_state(self, holding):
+    def holding_state(self, holding):
         if holding not in self.holdings:
             self.holdings[holding] = state = HoldingState()
             return state
@@ -77,27 +88,27 @@ class NewsReelMonitor(object):
         # only invoked when we know the info is the most recent
         self._name_to_clan_info[name] = (clan, rank)
     
-    def _process_proximity_event(self, event_time, name, clan, rank, is_enter, holding):
-        is_enter_string = 'entered' if is_enter else 'left'
+    def _process_proximity_event(self, event_time, name, clan, rank, present, holding):
         if name not in self._current_request_processed_players:
             # not an older event/state.
             self._current_request_processed_players.add(name)
             # update the name to clan info mapping
             self._set_player_info(name, clan, rank)
-            holding_state = self._holding_state(holding)
-            if holding_state.proximity_event(name, is_enter):
+            holding_state = self.holding_state(holding)
+            result = holding_state.proximity_event(event_time, name, present)
+            #if result:
                 # this is a state change
-                #print(f'{event_time} Proximity: [{clan}:{rank}] {name} {is_enter_string} {holding}')
+                #present_string = 'entered' if present else 'left'
+                #print(f'{event_time} Proximity: [{clan}:{rank}] {name} {present_string} {holding}')
                 #print(f'STATE: {holding} {holding_state.players}')
-                return True
-            return False
+            return result
         
     def _process_resource_event(self, event_time, name, clan, rank, resource, holding):
         if rank and not clan:
             clan = self.clan_name()
         if name not in self._current_request_processed_players:
             self._set_player_info(name, clan, rank)
-        holding_state = self._holding_state(holding)
+        holding_state = self.holding_state(holding)
         if holding_state.resource_event(event_time, name, resource):
             # previously unknown hit
             #print(f'{event_time} Resource: [{clan}:{rank}] {name} hit {holding} {resource}')
@@ -145,17 +156,23 @@ class NewsReelMonitor(object):
                         name = proximity_match.group('unclanned_name')
                         if not name:
                             name = proximity_match.group('name')
-                        is_enter = (proximity_match.group('state') != 'left')
-                        if self._process_proximity_event(
+                        present = (proximity_match.group('state') != 'left')
+                        result = self._process_proximity_event(
                                 event_time,
                                 name,
                                 proximity_match.group('clan'),
                                 proximity_match.group('rank'),
-                                is_enter,
-                                holding):
-                            # { 'Holding' : { 'Player' : state } }
+                                present,
+                                holding)
+                        if result:
                             player_state = nested_dict(changed_proximity, holding)
-                            player_state[name] = is_enter
+                            if present:
+                                # { 'Holding' : { 'Player' : (present, time) } }
+                                player_state[name] = (present, event_time)
+                            else:
+                                # result is the time the player previously entered
+                                # { 'Holding' : { 'Player' : (present, (entry_time, exit_time)) } }
+                                player_state[name] = (present, (result, event_time))
                     else:
                         # resource
                         rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"
@@ -178,9 +195,12 @@ class NewsReelMonitor(object):
                                     rank,
                                     resource,
                                     holding):
-                                # { 'Holding' : { 'ResourceName' : { 'Player' : N-hits} } }
+                                # { 'Holding' : { 'ResourceName' : { 'Player' : {time1, time2, ... timeN}} } }
                                 resource_state = nested_dict(nested_dict(changed_resources, holding), resource)
-                                resource_state[name] = resource_state.get(name, 0) + 1
+                                hit_times = resource_state.get(name)
+                                if not hit_times:
+                                    resource_state[name] = hit_times = set()
+                                hit_times.add(event_time)
                         else:
                             self._on_unknown_event(event_time, event_text)
             self.last_check_latest_event_time = latest_event_time
