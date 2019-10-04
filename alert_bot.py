@@ -43,6 +43,10 @@ class AlertBot(object):
         # TODO: offensive/stupid clan names
         return clan
         
+    @staticmethod
+    def format_datetime(value):
+        return value.strftime('%Y-%m-%d %H:%M:%S')
+
     # TODO: alerting rules for 'status' command
     # TODO: need 'all clear' message!
     def get_alerts(self):
@@ -75,7 +79,7 @@ class AlertBot(object):
                 holding_state = self.monitor.holding_state(holding)
                 enemies_by_clan = {}
                 enemy_count = 0
-                most_numerous_clan_count = 0
+                most_numerous_clan_enemy_count = 0
                 most_numerous_clan = None
                 for name in holding_state.players:
                     clan, rank = self.monitor.get_player_clan_info(name)
@@ -87,12 +91,13 @@ class AlertBot(object):
                         enemies_by_clan[clan] = enemies = set()
                     enemies.add(name)
                     # if it's a new highest total or the same but with a clan alphabetically earlier (prioritizing clans over unclanned None entries)
-                    enemy_count = len(enemies)
-                    if enemy_count > most_numerous_clan_count or (enemy_count == most_numerous_clan_count and (
+                    clan_enemy_count = len(enemies)
+                    enemy_count += clan_enemy_count
+                    if clan_enemy_count > most_numerous_clan_enemy_count or (clan_enemy_count == most_numerous_clan_enemy_count and (
                             # most numerous is unclanned, or it is a clan and this clan is one alphabetically earlier
                             # (prioritizing clans over unclanned 'None' entries)
                             not most_numerous_clan or (clan and clan < most_numerous_clan))):
-                        most_numerous_clan_count = enemy_count
+                        most_numerous_clan_enemy_count = clan_enemy_count
                         most_numerous_clan = clan
                 if enemy_count:
                     if len(enemies_by_clan) == 1:
@@ -113,19 +118,20 @@ class AlertBot(object):
                     bisect.insort(notices, (holding, alert))
                     
                 if last_alert != alert:
-                    print(f'CHANGED! "{last_alert}" != {alert}')
+                    #print(f'CHANGED! "{last_alert}" != {alert}')
                     self.holding_alert[holding] = alert
                     # if any alert at all changed
                     alert_changed = True
             if alert_changed:
                 warnings = [entry[2] for entry in prioritized_warnings]
                 notices = [entry[1] for entry in notices]
-                print(f'ALERT CHANGED: {warnings} ____ {notices}')
+                #print(f'ALERT CHANGED: {warnings} ____ {notices}')
+                timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
                 if warnings:
-                    full_warning = f'WARNING: {oxford_comma_delimited_string(warnings)}'
+                    full_warning = f'{timestamp} WARNING: {oxford_comma_delimited_string(warnings)}'
                     print(full_warning)
                 if notices:
-                    full_notice = f'NOTICE: {oxford_comma_delimited_string(notices)}'
+                    full_notice = f'{timestamp} NOTICE: {oxford_comma_delimited_string(notices)}'
                     print(full_notice)
                 # TODO: remove debug divider
                 print('----------------')
