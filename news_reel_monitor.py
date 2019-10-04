@@ -24,27 +24,16 @@ class ResourceState(object):
         
 class HoldingState(object):
     def __init__(self):
-        self.players = {}  # value is the time that they entered
+        self.players = set()
         self.resources = {}
     
-    def proximity_event(self, event_time, name, present):
-        try:
-            entry_time = self.players.pop(name)
-        except:
-            entry_time = None
-        if entry_time:
-            # player was present
-            if not present:  # player has left
-                # the time that the player entered, caller can determine duration of desired
-                return entry_time  # new event
-            # already knew the player was there
-        else:
-            # player was not present
-            if present:  # player has entered
-                self.players[name] = event_time
-                return True  # new event
-            # already knew the player was gone
-        return False  # old/duplicate event
+    def proximity_event(self, name, present):
+        was_present = name in self.players
+        if was_present:
+            self.players.remove(name)
+        if present:
+            self.players.add(name)
+        return (was_present != present)
         
     def resource_event(self, event_time, name, resource):
         if resource in self.resources:
@@ -61,11 +50,13 @@ def nested_dict(dict_object, key):
         dict_object[key] = value
     return value
 # TODO: 'unique' players, output pages, ...
+# TODO: should clan info lookup use lowercase names?
 class NewsReelMonitor(object):
     def __init__(self, client):
         self.client = client
         self.last_check_latest_event_time = None
         self.holdings = {}
+        self.player_holding = {}
         self._clan_name = None
         self._current_request_processed_players = set()
         self._name_to_clan_info = {}
@@ -88,37 +79,35 @@ class NewsReelMonitor(object):
         # only invoked when we know the info is the most recent
         self._name_to_clan_info[name] = (clan, rank)
     
-    def _process_proximity_event(self, event_time, name, clan, rank, present, holding):
+    def _process_proximity_event(self, name, clan, rank, present, holding):
         if name not in self._current_request_processed_players:
             # not an older event/state.
             self._current_request_processed_players.add(name)
             # update the name to clan info mapping
             self._set_player_info(name, clan, rank)
             holding_state = self.holding_state(holding)
-            result = holding_state.proximity_event(event_time, name, present)
-            if result:
-                # this is a state change
-                present_string = 'entered' if present else 'left'
-                print(f'{event_time} Proximity: [{clan}:{rank}] {name} {present_string} {holding}')
-                #print(f'STATE: {holding} {holding_state.players}')
-            return result
-        
-    def _process_resource_event(self, event_time, name, clan, rank, resource, holding):
-        if rank and not clan:
-            clan = self.clan_name()
-        if name not in self._current_request_processed_players:
-            self._set_player_info(name, clan, rank)
-        holding_state = self.holding_state(holding)
-        if holding_state.resource_event(event_time, name, resource):
-            # previously unknown hit
-            #print(f'{event_time} Resource: [{clan}:{rank}] {name} hit {holding} {resource}')
-            #print(f'STATE: {holding} {list(holding_state.resources[resource].player_hits.keys())}')
-            return True
+            
+            if holding_state.proximity_event(name, present):
+                previous_holding_state = self.player_holding.get(name)
+                if previous_holding_state is not None:
+                    # because I only process the most recent state of any
+                    # particular person within the content of a given update,
+                    # if new messages arrive saying a player left one city and
+                    # also entered another (fast travel will do this) then we
+                    # exit event is basically 'missed', so we'll simulate it
+                    previous_holding_state.proximity_event(name, False)
+                    # even if exiting the same holding (rather than the case
+                    # of a missed exit), this updates the state
+                    del self.player_holding[name]
+                if present:
+                    self.player_holding[name] = holding_state
+                return True
         return False
-    
-    def _on_unknown_event(self, event_time, event_text):
-        print(f'UNKNOWN MESSAGE: {event_time} {event_text}')
         
+    # If a player both enters and leaves a holding between calls, because
+    # only the most recent state is reported for a given holding, note that
+    # you will get an exit reported even though an entrance was never
+    # previously reported.
     def check_for_changes(self):
         global MONITORED_CATEGORIES
         result = self.client.get_news_reel(MONITORED_CATEGORIES, api_client.TimeFilter.ONE_DAY, oldest_event_time = self.last_check_latest_event_time)
@@ -156,23 +145,42 @@ class NewsReelMonitor(object):
                         name = proximity_match.group('unclanned_name')
                         if not name:
                             name = proximity_match.group('name')
+                        clan = proximity_match.group('clan')
+                        rank = proximity_match.group('rank')
                         present = (proximity_match.group('state') != 'left')
-                        result = self._process_proximity_event(
-                                event_time,
-                                name,
-                                proximity_match.group('clan'),
-                                proximity_match.group('rank'),
-                                present,
-                                holding)
+
+                        if name not in self._current_request_processed_players:
+                            # not an older event/state.
+                            self._current_request_processed_players.add(name)
+                            # update the name to clan info mapping
+                            self._set_player_info(name, clan, rank)
+                            holding_state = self.holding_state(holding)
+                            
+                            if holding_state.proximity_event(name, present):
+                                previous_holding = self.player_holding.get(name)
+                                if previous_holding is not None:
+                                    # because I only process the most recent state of any
+                                    # particular person within the content of a given update,
+                                    # if new messages arrive saying a player left one city and
+                                    # also entered another (fast travel will do this) then we
+                                    # exit event is basically 'missed', so we'll simulate it
+                                    self.holding_state(previous_holding).proximity_event(name, False)
+                                    
+                                    player_state = nested_dict(changed_proximity, previous_holding)
+                                    # { 'Holding' : { 'Player' : present } }
+                                    player_state[name] = False
+                                    # even if simply exiting the same holding this updates the state
+                                    del self.player_holding[name]
+                                if present:
+                                    player_state = nested_dict(changed_proximity, holding)
+                                    # { 'Holding' : { 'Player' : present } }
+                                    player_state[name] = True
+                                    self.player_holding[name] = holding
+                                
                         if result:
                             player_state = nested_dict(changed_proximity, holding)
-                            # { 'Holding' : { 'Player' : (entry_time, exit_time) } }
-                            if present:
-                                # { 'Holding' : { 'Player' : (present, time) } }
-                                player_state[name] = (event_time, None)
-                            else:
-                                # result is the time the player previously entered
-                                player_state[name] = (result, event_time)
+                            # { 'Holding' : { 'Player' : present } }
+                            player_state[name] = present
                     else:
                         # resource
                         rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"
@@ -182,27 +190,24 @@ class NewsReelMonitor(object):
                         resource_pattern = f'^({rank_pattern} )?{name_pattern}( {clan_pattern})? {resource_pattern} {holding_pattern}\\.$'
                         resource_match = re.match(resource_pattern, event_text)
                         if resource_match:
+                            resource = resource_match.group('resource')
                             holding = resource_match.group('holding')
                             name = resource_match.group('name')
+                            clan = resource_match.group('clan')
                             rank = resource_match.group('rank')
                             if rank == 'Supreme General':
                                 rank = 'SupremeGeneral'  # make it match proximity
-                            resource = resource_match.group('resource')
-                            if self._process_resource_event(
-                                    event_time,
-                                    name,
-                                    resource_match.group('clan'),
-                                    rank,
-                                    resource,
-                                    holding):
-                                # { 'Holding' : { 'ResourceName' : { 'Player' : {time1, time2, ... timeN}} } }
+                            if rank and not clan:
+                                clan = self.clan_name()
+                            if name not in self._current_request_processed_players:
+                                self._set_player_info(name, clan, rank)
+                            holding_state = self.holding_state(holding)
+                            if holding_state.resource_event(event_time, name, resource):
+                                # { 'Holding' : { 'ResourceName' : { 'Player' : N-hits } } }
                                 resource_state = nested_dict(nested_dict(changed_resources, holding), resource)
-                                hit_times = resource_state.get(name)
-                                if not hit_times:
-                                    resource_state[name] = hit_times = set()
-                                hit_times.add(event_time)
+                                resource_state[name] = resource_state.get(name, 0) + 1
                         else:
-                            self._on_unknown_event(event_time, event_text)
+                            print(f'UNKNOWN MESSAGE: {event_time} {event_text}')
             self.last_check_latest_event_time = latest_event_time
         finally:
             self._current_request_processed_players.clear()

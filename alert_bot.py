@@ -2,6 +2,7 @@
  
 import news_reel_monitor
 import bisect
+import datetime
  
 UNCLANNED_PLACEHOLDER = 'unclanned'
  
@@ -9,6 +10,7 @@ UNCLANNED_PLACEHOLDER = 'unclanned'
 # WARNING: Holding has X enemies from ClanName
 # WARNING: Holding has X enemies, mostly from ClanName
 # combined like WARNING: Message1, Message2, Message3, and MessageN
+
 def oxford_comma_delimited_string(entries):
     count = len(entries)
     if count:
@@ -18,6 +20,8 @@ def oxford_comma_delimited_string(entries):
     return ''
 
 # TODO: lower to normal case player mappings
+# TODO: currently only shows changed warnings, but should we re-report
+# other non-empty holdings too, when that happens?
 class AlertBot(object): 
     def __init__(self, monitor):
         self.holding_alert = {}
@@ -39,37 +43,41 @@ class AlertBot(object):
         # TODO: offensive/stupid clan names
         return clan
         
+    # TODO: alerting rules for 'status' command
+    # TODO: need 'all clear' message!
     def get_alerts(self):
         # retrieve info granularly, or just process the holdings, or some combination therein
         changed_proximity, changed_resources = self.monitor.check_for_changes()
-        # NOTE: if you wanted to track how long someone was in the city,
-        # you can deduce that from changed_proximity.
         # TODO: implement 'seen' with it
+        now = datetime.datetime.now()
         if changed_proximity:
             alert_changed = False
             prioritized_warnings = []
             notices = []
             for holding, player_state in changed_proximity.items():
                 # check the new events for 'seen' functionality
-                for name, event_times in player_state.items():
-                    entry_time, exit_time = event_times
-                    if exit_time is not None:
-                        # player left
-                        self.seen_players[name] = (exit_time, holding)
+                for name in player_state.keys():
+                    location = self.monitor.player_holding.get(name)
+                    if location is not None:
+                        # If the player is still in one of the cities, use that holding for the state
+                        self.seen_players[name] = (now, location)
                     else:
-                        # player entered
-                        self.seen_players[name] = (entry_time, holding)
+                        # Set last seen location to the holding that was left. In
+                        # a "leave, enter different holding, leave that" scenario
+                        # the holdings will overwrite each other and what will be
+                        # reported for the player is the last one iterated over in
+                        # the outer changed_proximity.items() loop.
+                        self.seen_players[name] = (now, holding)
                 # Get the full holding message
                 last_alert = self.holding_alert.get(holding, None)
                 if last_alert is None:
                     self.holding_alert[holding] = last_alert = f'{holding} is clear'
                 holding_state = self.monitor.holding_state(holding)
                 enemies_by_clan = {}
-                # use .keys() because we don't care about the entry time
                 enemy_count = 0
                 most_numerous_clan_count = 0
                 most_numerous_clan = None
-                for name in holding_state.players.keys():
+                for name in holding_state.players:
                     clan, rank = self.monitor.get_player_clan_info(name)
                     # TODO: filter out friendlies here
                     if self.is_friendly(name, clan):
