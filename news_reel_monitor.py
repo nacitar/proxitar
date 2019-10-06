@@ -167,20 +167,14 @@ class NewsReelMonitor(object):
                                     self.holding_state(previous_holding).proximity_event(name, False)
                                     
                                     player_state = nested_dict(changed_proximity, previous_holding)
-                                    # { 'Holding' : { 'Player' : present } }
-                                    player_state[name] = False
+                                    # { 'Holding' : { 'Player' : (present, is_current) } }
+                                    player_state[name] = (False, False)
                                     # even if simply exiting the same holding this updates the state
                                     del self.player_holding[name]
-                                if present:
-                                    player_state = nested_dict(changed_proximity, holding)
-                                    # { 'Holding' : { 'Player' : present } }
-                                    player_state[name] = True
-                                    self.player_holding[name] = holding
-                                
-                        if result:
-                            player_state = nested_dict(changed_proximity, holding)
-                            # { 'Holding' : { 'Player' : present } }
-                            player_state[name] = present
+                                player_state = nested_dict(changed_proximity, holding)
+                                # { 'Holding' : { 'Player' : (present, is_current) } }
+                                player_state[name] = (present, True)
+                                self.player_holding[name] = holding
                     else:
                         # resource
                         rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"

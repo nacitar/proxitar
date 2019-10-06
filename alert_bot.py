@@ -61,20 +61,12 @@ class AlertBot(object):
             notices = []
             for holding, player_state in changed_proximity.items():
                 # check the new events for 'seen' functionality
-                for name in player_state.keys():
-                    location = self.monitor.player_holding.get(name)
-                    if location is not None:
-                        # If the player is still in one of the cities, use that holding for the state
-                        self.seen_players[name] = (now, location)
-                    else:
-                        # Set last seen location to the holding that was left. In
-                        # a "leave, enter different holding, leave that" scenario
-                        # the holdings will overwrite each other and what will be
-                        # reported for the player is the last one iterated over in
-                        # the outer changed_proximity.items() loop.  Either exit event
-                        # is equally valid.  Could keep up with all of them, but you
-                        # still wouldn't know which one was last, so this choice
-                        # is as good as any.
+                for name, state in player_state.items():
+                    present, is_current = state
+                    if is_current:
+                        # by checking if it's current, we're sure that this is the latest
+                        # location, for situations where the player has left multiple holdings
+                        # within the contents of a single update.
                         self.seen_players[name] = (now, holding)
                 # Get the full holding message
                 last_alert = self.holding_alert.get(holding, None)
