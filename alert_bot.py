@@ -3,6 +3,9 @@
 # TODO: how will commands handle incorrectly cased named?  will need to be able to do that, preferably without losing original case in messages.
 # TODO: initial 'all clear'? here, or in main?
 # TODO: save 'seen' persistently upon changes?
+
+# TODO: commands, reporting/unique players (later), saving 'seen' to disk
+# figure out clearing of state after a disconnect (or is that a 'main' thing?)
 import news_reel_monitor
 import bisect
 import datetime
@@ -37,13 +40,9 @@ class AlertBot(object):
         # TODO: offensive/stupid clan names
         return clan
         
-    @staticmethod
-    def format_datetime(value):
-        return value.strftime('%Y-%m-%d %H:%M:%S')
-    
     def _get_alerts(self, full_status, all_warnings_on_change):
         changed_proximity, changed_resources = self.monitor.check_for_changes()
-        alert_changed = False
+        any_alert_changed = False
         prioritized_warnings = []
         notices = []
         total_enemies = 0
@@ -95,8 +94,10 @@ class AlertBot(object):
             else:
                 alert = f'{holding} is clear'
                 is_warning = False
-                
-            if last_alert != alert or (is_warning and all_warnings_on_change):
+            this_alert_changed = last_alert != alert
+            if this_alert_changed or (is_warning and all_warnings_on_change):
+                if this_alert_changed:
+                    any_alert_changed = True
                 # this is a new alert, add it to the list to be output
                 if is_warning:
                     # just for sorting the messages by enemy count and holding name
@@ -106,10 +107,9 @@ class AlertBot(object):
                     bisect.insort(notices, (holding, alert))
                 #print(f'CHANGED! "{last_alert}" != {alert}')
                 self.holding_alert[holding] = alert
-                # if any alert at all changed
-                alert_changed = True
+                
         alerts = []
-        if alert_changed or full_status:
+        if any_alert_changed or full_status:
             warnings = [entry[2] for entry in prioritized_warnings]
             notices = [entry[1] for entry in notices]
             #print(f'ALERT CHANGED: {warnings} ____ {notices}')
