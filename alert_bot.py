@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
- 
+
+# TODO: how will commands handle incorrectly cased named?  will need to be able to do that, preferably without losing original case in messages.
+# TODO: initial 'all clear'? here, or in main?
 import news_reel_monitor
 import bisect
 import datetime
  
 UNCLANNED_PLACEHOLDER = 'unclanned'
  
-# WARNING: Holding has enemy FirstName LastName from ClanName
-# WARNING: Holding has X enemies from ClanName
-# WARNING: Holding has X enemies, mostly from ClanName
-# combined like WARNING: Message1, Message2, Message3, and MessageN
-
 def oxford_comma_delimited_string(entries):
     count = len(entries)
     if count:
@@ -19,16 +16,12 @@ def oxford_comma_delimited_string(entries):
         return f"{', '.join(entries[:-1])}, and {entries[-1]}"
     return ''
 
-# TODO: lower to normal case player mappings
-# TODO: currently only shows changed warnings, but should we re-report
-# other non-empty holdings too, when that happens?
 class AlertBot(object): 
     def __init__(self, monitor):
         self.holding_alert = {}
         self.monitor = monitor
         self.seen_players = {}
         # TODO: the 'unique' stuff
-        # self.players_by_holding = {}
     
     def is_friendly(self, name, clan):
         # TODO: fill this in
@@ -46,19 +39,96 @@ class AlertBot(object):
     @staticmethod
     def format_datetime(value):
         return value.strftime('%Y-%m-%d %H:%M:%S')
-
-    # TODO: alerting rules for 'status' command
-    # TODO: need 'all clear' message!
-    # TODO: rename to process_changes and pass them in, so we can test the alerting logic?? do similar for proximity events in monitor?
-    def get_alerts(self):
-        # retrieve info granularly, or just process the holdings, or some combination therein
+    
+    def _get_alerts(self, full_status, all_warnings_on_change):
         changed_proximity, changed_resources = self.monitor.check_for_changes()
-        # TODO: implement 'seen' with it
+        alert_changed = False
+        prioritized_warnings = []
+        notices = []
+        total_enemies = 0
+        if full_status:
+            all_warnings_on_change = True
+        # for simplicity, just always check all holdings... we only report new events anyway,
+        # and this is necessary for 'all clear' messages anyway
+        for holding in self.monitor.holdings.keys():
+            # Get the full holding message
+            last_alert = self.holding_alert.get(holding, None)
+            if last_alert is None:
+                self.holding_alert[holding] = last_alert = f'{holding} is clear'
+            holding_state = self.monitor.holding_state(holding)
+            enemies_by_clan = {}
+            enemy_count = 0
+            most_numerous_clan_enemy_count = 0
+            most_numerous_clan = None
+            for name in holding_state.players:
+                clan, rank = self.monitor.get_player_clan_info(name)
+                if self.is_friendly(name, clan):
+                    continue
+                enemies = enemies_by_clan.get(clan)
+                if enemies is None:
+                    enemies_by_clan[clan] = enemies = set()
+                enemies.add(name)
+                # if it's a new highest total or the same but with a clan alphabetically earlier (prioritizing clans over unclanned None entries)
+                clan_enemy_count = len(enemies)
+                enemy_count += clan_enemy_count
+                if clan_enemy_count > most_numerous_clan_enemy_count or (clan_enemy_count == most_numerous_clan_enemy_count and (
+                        # most numerous is unclanned, or it is a clan and this clan is one alphabetically earlier
+                        # (prioritizing clans over unclanned 'None' entries)
+                        not most_numerous_clan or (clan and clan < most_numerous_clan))):
+                    most_numerous_clan_enemy_count = clan_enemy_count
+                    most_numerous_clan = clan
+            if enemy_count:
+                total_enemies += enemy_count
+                if len(enemies_by_clan) == 1:
+                    clan, enemies = next(iter(enemies_by_clan.items()))
+                    clan = self.filter_clan(clan)
+                    if len(enemies) == 1:
+                        name = self.filter_name(next(iter(enemies)))
+                        alert = f'{holding} has enemy {name} from {clan}'
+                    else:
+                        alert = f'{holding} has {enemy_count} enemies from {clan}'
+                else:
+                    clan = self.filter_clan(most_numerous_clan)
+                    alert = f'{holding} has {enemy_count} enemies, mostly from {clan}'
+                is_warning = True
+            else:
+                alert = f'{holding} is clear'
+                is_warning = False
+                
+            if last_alert != alert or (is_warning and all_warnings_on_change):
+                # this is a new alert, add it to the list to be output
+                if is_warning:
+                    # just for sorting the messages by enemy count and holding name
+                    bisect.insort(prioritized_warnings, (-enemy_count, holding, alert))
+                else:
+                    # for sorting by holding name
+                    bisect.insort(notices, (holding, alert))
+                #print(f'CHANGED! "{last_alert}" != {alert}')
+                self.holding_alert[holding] = alert
+                # if any alert at all changed
+                alert_changed = True
+        alerts = []
+        if alert_changed or full_status:
+            warnings = [entry[2] for entry in prioritized_warnings]
+            notices = [entry[1] for entry in notices]
+            #print(f'ALERT CHANGED: {warnings} ____ {notices}')
+            if warnings:
+                alerts.append(f'WARNING: {oxford_comma_delimited_string(warnings)}')
+            # if everything is clear, and either we want a status
+            # update or this is indeed new (because a new notice exists)
+            if not total_enemies and (full_status or notices):
+                alerts.append('NOTICE: all clear')
+            elif notices:
+                alerts.append(f'NOTICE: {oxford_comma_delimited_string(notices)}')
+                
+            # TODO: remove debug divider
+            #print('----------------')
+        return alerts    
+    
+    def check_for_changes(self, full_status=False, all_warnings_on_change=False):
         now = datetime.datetime.now()
+        changed_proximity, changed_resources = self.monitor.check_for_changes()
         if changed_proximity:
-            alert_changed = False
-            prioritized_warnings = []
-            notices = []
             for holding, player_state in changed_proximity.items():
                 # check the new events for 'seen' functionality
                 for name, state in player_state.items():
@@ -68,71 +138,9 @@ class AlertBot(object):
                         # location, for situations where the player has left multiple holdings
                         # within the contents of a single update.
                         self.seen_players[name] = (now, holding)
-                # Get the full holding message
-                last_alert = self.holding_alert.get(holding, None)
-                if last_alert is None:
-                    self.holding_alert[holding] = last_alert = f'{holding} is clear'
-                holding_state = self.monitor.holding_state(holding)
-                enemies_by_clan = {}
-                enemy_count = 0
-                most_numerous_clan_enemy_count = 0
-                most_numerous_clan = None
-                for name in holding_state.players:
-                    clan, rank = self.monitor.get_player_clan_info(name)
-                    if self.is_friendly(name, clan):
-                        continue
-                    enemies = enemies_by_clan.get(clan)
-                    if enemies is None:
-                        enemies_by_clan[clan] = enemies = set()
-                    enemies.add(name)
-                    # if it's a new highest total or the same but with a clan alphabetically earlier (prioritizing clans over unclanned None entries)
-                    clan_enemy_count = len(enemies)
-                    enemy_count += clan_enemy_count
-                    if clan_enemy_count > most_numerous_clan_enemy_count or (clan_enemy_count == most_numerous_clan_enemy_count and (
-                            # most numerous is unclanned, or it is a clan and this clan is one alphabetically earlier
-                            # (prioritizing clans over unclanned 'None' entries)
-                            not most_numerous_clan or (clan and clan < most_numerous_clan))):
-                        most_numerous_clan_enemy_count = clan_enemy_count
-                        most_numerous_clan = clan
-                if enemy_count:
-                    if len(enemies_by_clan) == 1:
-                        clan, enemies = next(iter(enemies_by_clan.items()))
-                        clan = self.filter_clan(clan)
-                        if len(enemies) == 1:
-                            name = self.filter_name(next(iter(enemies)))
-                            alert = f'{holding} has enemy {name} from {clan}'
-                        else:
-                            alert = f'{holding} has {enemy_count} enemies from {clan}'
-                    else:
-                        clan = self.filter_clan(most_numerous_clan)
-                        alert = f'{holding} has {enemy_count} enemies, mostly from {clan}'
-                    is_warning = True
-                else:
-                    alert = f'{holding} is clear'
-                    is_warning = False
-                    
-                if last_alert != alert:
-                    # this is a new alert, add it to the list to be output
-                    if is_warning:
-                        # just for sorting the messages by enemy count and holding name
-                        bisect.insort(prioritized_warnings, (-enemy_count, holding, alert))
-                    else:
-                        # for sorting by holding name
-                        bisect.insort(notices, (holding, alert))
-                    #print(f'CHANGED! "{last_alert}" != {alert}')
-                    self.holding_alert[holding] = alert
-                    # if any alert at all changed
-                    alert_changed = True
-            if alert_changed:
-                warnings = [entry[2] for entry in prioritized_warnings]
-                notices = [entry[1] for entry in notices]
-                #print(f'ALERT CHANGED: {warnings} ____ {notices}')
-                timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
-                if warnings:
-                    full_warning = f'{timestamp} WARNING: {oxford_comma_delimited_string(warnings)}'
-                    print(full_warning)
-                if notices:
-                    full_notice = f'{timestamp} NOTICE: {oxford_comma_delimited_string(notices)}'
-                    print(full_notice)
-                # TODO: remove debug divider
-                #print('----------------')
+        return (now, self._get_alerts(full_status=full_status, all_warnings_on_change=all_warnings_on_change))
+        
+    # get the status without checking
+    def status(self):
+        now = datetime.datetime.now()
+        return (now, self._get_alerts(full_status=True, all_warnings_on_change=False))
