@@ -49,6 +49,7 @@ class AlertBot(object):
 
     # TODO: alerting rules for 'status' command
     # TODO: need 'all clear' message!
+    # TODO: rename to process_changes and pass them in, so we can test the alerting logic?? do similar for proximity events in monitor?
     def get_alerts(self):
         # retrieve info granularly, or just process the holdings, or some combination therein
         changed_proximity, changed_resources = self.monitor.check_for_changes()
@@ -70,7 +71,10 @@ class AlertBot(object):
                         # a "leave, enter different holding, leave that" scenario
                         # the holdings will overwrite each other and what will be
                         # reported for the player is the last one iterated over in
-                        # the outer changed_proximity.items() loop.
+                        # the outer changed_proximity.items() loop.  Either exit event
+                        # is equally valid.  Could keep up with all of them, but you
+                        # still wouldn't know which one was last, so this choice
+                        # is as good as any.
                         self.seen_players[name] = (now, holding)
                 # Get the full holding message
                 last_alert = self.holding_alert.get(holding, None)
@@ -83,7 +87,6 @@ class AlertBot(object):
                 most_numerous_clan = None
                 for name in holding_state.players:
                     clan, rank = self.monitor.get_player_clan_info(name)
-                    # TODO: filter out friendlies here
                     if self.is_friendly(name, clan):
                         continue
                     enemies = enemies_by_clan.get(clan)
@@ -111,13 +114,19 @@ class AlertBot(object):
                     else:
                         clan = self.filter_clan(most_numerous_clan)
                         alert = f'{holding} has {enemy_count} enemies, mostly from {clan}'
-                    # just for sorting the messages by enemy count and holding name
-                    bisect.insort(prioritized_warnings, (-enemy_count, holding, alert))
+                    is_warning = True
                 else:
                     alert = f'{holding} is clear'
-                    bisect.insort(notices, (holding, alert))
+                    is_warning = False
                     
                 if last_alert != alert:
+                    # this is a new alert, add it to the list to be output
+                    if is_warning:
+                        # just for sorting the messages by enemy count and holding name
+                        bisect.insort(prioritized_warnings, (-enemy_count, holding, alert))
+                    else:
+                        # for sorting by holding name
+                        bisect.insort(notices, (holding, alert))
                     #print(f'CHANGED! "{last_alert}" != {alert}')
                     self.holding_alert[holding] = alert
                     # if any alert at all changed
@@ -134,4 +143,4 @@ class AlertBot(object):
                     full_notice = f'{timestamp} NOTICE: {oxford_comma_delimited_string(notices)}'
                     print(full_notice)
                 # TODO: remove debug divider
-                print('----------------')
+                #print('----------------')
