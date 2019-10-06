@@ -2,6 +2,7 @@
 
 # TODO: how will commands handle incorrectly cased named?  will need to be able to do that, preferably without losing original case in messages.
 # TODO: initial 'all clear'? here, or in main?
+# TODO: save 'seen' persistently upon changes?
 import news_reel_monitor
 import bisect
 import datetime

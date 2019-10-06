@@ -79,31 +79,6 @@ class NewsReelMonitor(object):
         # only invoked when we know the info is the most recent
         self._name_to_clan_info[name] = (clan, rank)
     
-    def _process_proximity_event(self, name, clan, rank, present, holding):
-        if name not in self._current_request_processed_players:
-            # not an older event/state.
-            self._current_request_processed_players.add(name)
-            # update the name to clan info mapping
-            self._set_player_info(name, clan, rank)
-            holding_state = self.holding_state(holding)
-            
-            if holding_state.proximity_event(name, present):
-                previous_holding_state = self.player_holding.get(name)
-                if previous_holding_state is not None:
-                    # because I only process the most recent state of any
-                    # particular person within the content of a given update,
-                    # if new messages arrive saying a player left one city and
-                    # also entered another (fast travel will do this) then we
-                    # exit event is basically 'missed', so we'll simulate it
-                    previous_holding_state.proximity_event(name, False)
-                    # even if exiting the same holding (rather than the case
-                    # of a missed exit), this updates the state
-                    del self.player_holding[name]
-                if present:
-                    self.player_holding[name] = holding_state
-                return True
-        return False
-        
     # If a player both enters and leaves a holding between calls, because
     # only the most recent state is reported for a given holding, note that
     # you will get an exit reported even though an entrance was never
