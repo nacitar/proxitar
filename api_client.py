@@ -187,17 +187,18 @@ class ApiHttpConnection(object):
             method = 'GET'
         new_connection = False
         while True:
-            self.connection.request(method=method, url=url, headers=headers, body=form_data)
             try:
+                self.connection.request(method=method, url=url, headers=headers, body=form_data)
                 response_object = self.connection.getresponse()
-            except http.client.RemoteDisconnected as e:
+                break  # it worked!
+            except:  # (TimeoutError, http.client.RemoteDisconnected) as e
+                # request can raise TimeoutError, getresponse can raise RemoteDisconnected
                 if new_connection:
                     # it happened twice, it isn't just the keep-alive expiring
                     raise  # let it propagate up
-                self.connect()
-                new_connection = True
-                continue # run it one more time with the new connection
-            break  # it worked!
+            self.connect()
+            new_connection = True
+            # run it one more time with the new connection
         # printing the request after the reconnection so the logging order makes more sense
         if print_request:
             print(f"Url: {url}")

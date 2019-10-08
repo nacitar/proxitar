@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# TODO: how will commands handle incorrectly cased named?  will need to be able to do that, preferably without losing original case in messages.
+# TODO: how will commands handle incorrectly cased names?  will need to be able to do that, preferably without losing original case in messages.
 # TODO: initial 'all clear'? here, or in main?
 # TODO: save 'seen' persistently upon changes?
 
@@ -50,7 +50,7 @@ class AlertBot(object):
             all_warnings_on_change = True
         # for simplicity, just always check all holdings... we only report new events anyway,
         # and this is necessary for 'all clear' messages anyway
-        for holding in self.monitor.holdings.keys():
+        for holding in self.monitor.holdings():
             # Get the full holding message
             last_alert = self.holding_alert.get(holding, None)
             if last_alert is None:
@@ -77,22 +77,34 @@ class AlertBot(object):
                         not most_numerous_clan or (clan and clan < most_numerous_clan))):
                     most_numerous_clan_enemy_count = clan_enemy_count
                     most_numerous_clan = clan
+            cased_holding = self.monitor.cased_holding_name.get(holding)
             if enemy_count:
                 total_enemies += enemy_count
                 if len(enemies_by_clan) == 1:
                     clan, enemies = next(iter(enemies_by_clan.items()))
-                    clan = self.filter_clan(clan)
+                    filtered_clan = self.filter_clan(clan)
+                    if filtered_clan == clan:
+                        # it was unchanged/not filtered.. fix the case
+                        clan = self.monitor.cased_clan_name.get(clan)
+                    else:
+                        clan = filtered_clan  # it was filtered, so use it
                     if len(enemies) == 1:
                         name = self.filter_name(next(iter(enemies)))
-                        alert = f'{holding} has enemy {name} from {clan}'
+                        name = self.monitor.cased_player_name.get(name)
+                        alert = f'{cased_holding} has enemy {name} from {clan}'
                     else:
-                        alert = f'{holding} has {enemy_count} enemies from {clan}'
+                        alert = f'{cased_holding} has {enemy_count} enemies from {clan}'
                 else:
-                    clan = self.filter_clan(most_numerous_clan)
-                    alert = f'{holding} has {enemy_count} enemies, mostly from {clan}'
+                    filtered_clan = self.filter_clan(most_numerous_clan)
+                    if filtered_clan == most_numerous_clan:
+                        # it was unchanged/not filtered.. fix the case
+                        clan = self.monitor.cased_clan_name.get(most_numerous_clan)
+                    else:
+                        clan = filtered_clan
+                    alert = f'{cased_holding} has {enemy_count} enemies, mostly from {clan}'
                 is_warning = True
             else:
-                alert = f'{holding} is clear'
+                alert = f'{cased_holding} is clear'
                 is_warning = False
             this_alert_changed = last_alert != alert
             if this_alert_changed or (is_warning and all_warnings_on_change):
