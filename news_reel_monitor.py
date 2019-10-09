@@ -110,21 +110,21 @@ class NewsReelMonitor(object):
     
     def _common_message_processing(self, match):
         holding = match.group('holding')
+        name = None
         if 'unclanned_name' in match.groups():
             name = match.group('unclanned_name')
-        else:
+        if not name:
             name = match.group('name')
         clan = match.group('clan')
         rank = match.group('rank')
         if rank == 'Supreme General':
             rank = 'SupremeGeneral'  # make resource feed match proximity
         if rank and not clan:
-            clan = self.clan_name()
-        
+            clan = self.clan_name()  # updates cased_clan_name internally
+        elif clan:
+            clan = self.cased_clan_name.update(clan)
         # store the casing and get the lowercase equivalent
         holding = self.cased_holding_name.update(holding)
-        if clan:
-            clan = self.cased_clan_name.update(clan)
         # if this is the first time seeing this player this update
         if not self.cased_player_name.already_updated(name):
             name = self.cased_player_name.update(name)
@@ -150,72 +150,76 @@ class NewsReelMonitor(object):
         try:
             for page in result:
                 for event_time, event_text in page:
-                    if self.last_check_latest_event_time is None:
-                        self.last_check_latest_event_time = event_time
-                    if latest_event_time is None or event_time > latest_event_time:
-                        latest_event_time = event_time
-                    if event_time < self.last_check_latest_event_time:
-                        # Stop early; get_news_reel gives the complete page back to the oldest_event_time
-                        # but the extra entries on the page are unneeded.  Due to the behavior of
-                        # get_news_reel it's also assuredly the final page, so no need to do a multi-level
-                        # break out of these loops.
-                        break
-                    # common
-                    common_ranks='Recruit|Private|Corporal|Sergeant|Lieutenant|Captain|Major|Colonel|General'
-                    name_pattern = '(?P<name>[^ ]+ [^ ]+)'
-                    # proximity
-                    rank_pattern = f'(?P<rank>{common_ranks}|SupremeGeneral)'  # proximity has no space in "SupremeGeneral"
-                    clan_pattern = 'from (the Clan of|our clan) the (?P<clan>.+?)'
-                    unclanned_name_pattern = '(?P<unclanned_name>[^ ]+ [^ ]+)'
-                    state_pattern = '(has )?(?P<state>left|been spotted in|entered)'
-                    holding_pattern = 'our city of (?P<holding>.+)'
-                    proximity_pattern = f'^({rank_pattern} {name_pattern} {clan_pattern}|{unclanned_name_pattern}) {state_pattern} {holding_pattern}\\.$'
-                    proximity_match = re.match(proximity_pattern, event_text)
-                    if proximity_match:
-                        holding, name, clan, rank = self._common_message_processing(proximity_match)
-                        if name not in self._got_player_proximity_this_update:
-                            # not an older event/state.
-                            self._got_player_proximity_this_update.add(name)
-                            holding_state = self.holding_state(holding)
-                            present = (proximity_match.group('state') != 'left')
-                            if holding_state.proximity_event(name, present):
-                                previous_holding = self._player_location.get(name)
-                                if previous_holding is not None:
-                                    # because I only process the most recent state of any
-                                    # particular person within the content of a given update,
-                                    # if new messages arrive saying a player left one city and
-                                    # also entered another (fast travel will do this) then we
-                                    # exit event is basically 'missed', so we'll simulate it
-                                    self.holding_state(previous_holding).proximity_event(name, False)
-                                    
-                                    player_state = nested_dict(changed_proximity, previous_holding)
+                    try:
+                        if self.last_check_latest_event_time is None:
+                            self.last_check_latest_event_time = event_time
+                        if latest_event_time is None or event_time > latest_event_time:
+                            latest_event_time = event_time
+                        if event_time < self.last_check_latest_event_time:
+                            # Stop early; get_news_reel gives the complete page back to the oldest_event_time
+                            # but the extra entries on the page are unneeded.  Due to the behavior of
+                            # get_news_reel it's also assuredly the final page, so no need to do a multi-level
+                            # break out of these loops.
+                            break
+                        # common
+                        common_ranks='Recruit|Private|Corporal|Sergeant|Lieutenant|Captain|Major|Colonel|General'
+                        name_pattern = '(?P<name>[^ ]+ [^ ]+)'
+                        # proximity
+                        rank_pattern = f'(?P<rank>{common_ranks}|SupremeGeneral)'  # proximity has no space in "SupremeGeneral"
+                        clan_pattern = 'from (the Clan of|our clan) the (?P<clan>.+?)'
+                        unclanned_name_pattern = '(?P<unclanned_name>[^ ]+ [^ ]+)'
+                        state_pattern = '(has )?(?P<state>left|been spotted in|entered)'
+                        holding_pattern = 'our city of (?P<holding>.+)'
+                        proximity_pattern = f'^({rank_pattern} {name_pattern} {clan_pattern}|{unclanned_name_pattern}) {state_pattern} {holding_pattern}\\.$'
+                        proximity_match = re.match(proximity_pattern, event_text)
+                        if proximity_match:
+                            holding, name, clan, rank = self._common_message_processing(proximity_match)
+                            if name not in self._got_player_proximity_this_update:
+                                # not an older event/state.
+                                self._got_player_proximity_this_update.add(name)
+                                holding_state = self.holding_state(holding)
+                                present = (proximity_match.group('state') != 'left')
+                                if holding_state.proximity_event(name, present):
+                                    previous_holding = self._player_location.get(name)
+                                    if previous_holding is not None:
+                                        # because I only process the most recent state of any
+                                        # particular person within the content of a given update,
+                                        # if new messages arrive saying a player left one city and
+                                        # also entered another (fast travel will do this) then we
+                                        # exit event is basically 'missed', so we'll simulate it
+                                        self.holding_state(previous_holding).proximity_event(name, False)
+                                        player_state = nested_dict(changed_proximity, previous_holding)
+                                        # { 'Holding' : { 'Player' : (present, is_current) } }
+                                        player_state[name] = (False, False)
+                                        # even if simply exiting the same holding this updates the state
+                                        del self._player_location[name]
+                                    player_state = nested_dict(changed_proximity, holding)
                                     # { 'Holding' : { 'Player' : (present, is_current) } }
-                                    player_state[name] = (False, False)
-                                    # even if simply exiting the same holding this updates the state
-                                    del self._player_location[name]
-                                player_state = nested_dict(changed_proximity, holding)
-                                # { 'Holding' : { 'Player' : (present, is_current) } }
-                                player_state[name] = (present, True)
-                                self._player_location[name] = holding
-                    else:
-                        # resource
-                        rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"
-                        resource_pattern = 'is gathering resources from our (?P<resource>.+)'
-                        holding_pattern = 'in (?P<holding>.+)'
-                        clan_pattern = 'from the (?P<clan>.+?)'
-                        resource_pattern = f'^({rank_pattern} )?{name_pattern}( {clan_pattern})? {resource_pattern} {holding_pattern}\\.$'
-                        resource_match = re.match(resource_pattern, event_text)
-                        if resource_match:
-                            holding, name, clan, rank = self._common_message_processing(resource_match)
-                            holding_state = self.holding_state(holding)
-                            resource = resource_match.group('resource')
-                            if holding_state.resource_event(event_time, name, resource):
-                                resource = self.cased_resource_name.update(resource)
-                                # { 'Holding' : { 'ResourceName' : { 'Player' : N-hits } } }
-                                resource_state = nested_dict(nested_dict(changed_resources, holding), resource)
-                                resource_state[name] = resource_state.get(name, 0) + 1
+                                    player_state[name] = (present, True)
+                                    self._player_location[name] = holding
                         else:
-                            print(f'UNKNOWN MESSAGE: {event_time} {event_text}')
+                            # resource
+                            rank_pattern = f'(?P<rank>{common_ranks}|Supreme General)'  # resources puts a space in "Supreme General"
+                            resource_pattern = 'is gathering resources from our (?P<resource>.+)'
+                            holding_pattern = 'in (?P<holding>.+)'
+                            clan_pattern = 'from the (?P<clan>.+?)'
+                            resource_pattern = f'^({rank_pattern} )?{name_pattern}( {clan_pattern})? {resource_pattern} {holding_pattern}\\.$'
+                            resource_match = re.match(resource_pattern, event_text)
+                            if resource_match:
+                                holding, name, clan, rank = self._common_message_processing(resource_match)
+                                holding_state = self.holding_state(holding)
+                                resource = resource_match.group('resource')
+                                if holding_state.resource_event(event_time, name, resource):
+                                    resource = self.cased_resource_name.update(resource)
+                                    # { 'Holding' : { 'ResourceName' : { 'Player' : N-hits } } }
+                                    resource_state = nested_dict(nested_dict(changed_resources, holding), resource)
+                                    resource_state[name] = resource_state.get(name, 0) + 1
+                            else:
+                                print(f'UNKNOWN MESSAGE: {event_time} {event_text}')
+                    except Exception as e:
+                        print(f'Exception when processing message: {event_time} {event_text}')
+                        print(e)
+                        #raise  
             self.last_check_latest_event_time = latest_event_time
         finally:
             self._got_player_proximity_this_update.clear()

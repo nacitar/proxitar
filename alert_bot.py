@@ -39,6 +39,9 @@ class AlertBot(object):
             return UNCLANNED_PLACEHOLDER
         # TODO: offensive/stupid clan names
         return clan
+    def filter_holding(self, holding):
+        # TODO: change it to change how TTS pronounces it?  to fix the capitalization of certain cities?
+        return holding
         
     def _get_alerts(self, full_status, all_warnings_on_change):
         changed_proximity, changed_resources = self.monitor.check_for_changes()
@@ -77,36 +80,38 @@ class AlertBot(object):
                         not most_numerous_clan or (clan and clan < most_numerous_clan))):
                     most_numerous_clan_enemy_count = clan_enemy_count
                     most_numerous_clan = clan
-            cased_holding = self.monitor.cased_holding_name.get(holding)
+            holding_string = self.filter_holding(holding)
+            if holding_string == holding:
+                # unfiltered, fix the case instead
+                holding_string = self.monitor.cased_holding_name.get(holding)
             if enemy_count:
                 total_enemies += enemy_count
                 if len(enemies_by_clan) == 1:
                     clan, enemies = next(iter(enemies_by_clan.items()))
-                    filtered_clan = self.filter_clan(clan)
-                    if filtered_clan == clan:
-                        # it was unchanged/not filtered.. fix the case
-                        clan = self.monitor.cased_clan_name.get(clan)
-                    else:
-                        clan = filtered_clan  # it was filtered, so use it
+                    clan_string = self.filter_clan(clan)
+                    if clan_string == clan:
+                        # unfiltered, fix the case instead
+                        clan_string = self.monitor.cased_clan_name.get(clan)
                     if len(enemies) == 1:
-                        name = self.filter_name(next(iter(enemies)))
-                        name = self.monitor.cased_player_name.get(name)
-                        alert = f'{cased_holding} has enemy {name} from {clan}'
+                        name = next(iter(enemies))
+                        name_string = self.filter_name(name)
+                        if name_string == name:
+                            # unfiltered, fix the case instead
+                            name_string = self.monitor.cased_player_name.get(name)
+                        alert = f'{holding_string} has enemy {name_string} from {clan_string}'
                     else:
-                        alert = f'{cased_holding} has {enemy_count} enemies from {clan}'
+                        alert = f'{holding_string} has {enemy_count} enemies from {clan_string}'
                 else:
-                    filtered_clan = self.filter_clan(most_numerous_clan)
-                    if filtered_clan == most_numerous_clan:
-                        # it was unchanged/not filtered.. fix the case
-                        clan = self.monitor.cased_clan_name.get(most_numerous_clan)
-                    else:
-                        clan = filtered_clan
-                    alert = f'{cased_holding} has {enemy_count} enemies, mostly from {clan}'
+                    clan_string = self.filter_clan(most_numerous_clan)
+                    if clan_string == most_numerous_clan:
+                        # unfiltered, fix the case instead
+                        clan_string = self.monitor.cased_clan_name.get(most_numerous_clan)
+                    alert = f'{holding_string} has {enemy_count} enemies, mostly from {clan_string}'
                 is_warning = True
             else:
-                alert = f'{cased_holding} is clear'
+                alert = f'{holding_string} is clear'
                 is_warning = False
-            this_alert_changed = last_alert != alert
+            this_alert_changed = (last_alert != alert)
             if this_alert_changed or (is_warning and all_warnings_on_change):
                 if this_alert_changed:
                     any_alert_changed = True
