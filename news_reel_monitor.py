@@ -110,6 +110,8 @@ class NewsReelMonitor(object):
     
     def _common_message_processing(self, match):
         holding = match.group('holding')
+        # store the casing and get the lowercase equivalent
+        holding = self.cased_holding_name.update(holding)
         name = None
         if 'unclanned_name' in match.groups():
             name = match.group('unclanned_name')
@@ -123,8 +125,6 @@ class NewsReelMonitor(object):
             clan = self.clan_name()  # updates cased_clan_name internally
         elif clan:
             clan = self.cased_clan_name.update(clan)
-        # store the casing and get the lowercase equivalent
-        holding = self.cased_holding_name.update(holding)
         # if this is the first time seeing this player this update
         if not self.cased_player_name.already_updated(name):
             name = self.cased_player_name.update(name)
