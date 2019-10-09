@@ -54,10 +54,14 @@ class AlertBot(object):
         # for simplicity, just always check all holdings... we only report new events anyway,
         # and this is necessary for 'all clear' messages anyway
         for holding in self.monitor.holdings():
+            holding_string = self.filter_holding(holding)
+            if holding_string == holding:
+                # unfiltered, fix the case instead
+                holding_string = self.monitor.cased_holding_name.get(holding)
             # Get the full holding message
-            last_alert = self.holding_alert.get(holding, None)
+            last_alert = self.holding_alert.get(holding)
             if last_alert is None:
-                self.holding_alert[holding] = last_alert = f'{holding} is clear'
+                self.holding_alert[holding] = last_alert = f'{holding_string} is clear'
             holding_state = self.monitor.holding_state(holding)
             enemies_by_clan = {}
             enemy_count = 0
@@ -80,10 +84,6 @@ class AlertBot(object):
                         not most_numerous_clan or (clan and clan < most_numerous_clan))):
                     most_numerous_clan_enemy_count = clan_enemy_count
                     most_numerous_clan = clan
-            holding_string = self.filter_holding(holding)
-            if holding_string == holding:
-                # unfiltered, fix the case instead
-                holding_string = self.monitor.cased_holding_name.get(holding)
             if enemy_count:
                 total_enemies += enemy_count
                 if len(enemies_by_clan) == 1:
@@ -138,7 +138,6 @@ class AlertBot(object):
                 alerts.append('NOTICE: all clear')
             elif notices:
                 alerts.append(f'NOTICE: {oxford_comma_delimited_string(notices)}')
-                
             # TODO: remove debug divider
             #print('----------------')
         return alerts    
