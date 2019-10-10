@@ -44,7 +44,6 @@ class AlertBot(object):
         return holding
         
     def _get_alerts(self, full_status, all_warnings_on_change=False):
-        changed_proximity, changed_resources = self.monitor.check_for_changes()
         any_alert_changed = False
         prioritized_warnings = []
         notices = []
