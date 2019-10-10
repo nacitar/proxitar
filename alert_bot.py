@@ -43,7 +43,7 @@ class AlertBot(object):
         # TODO: change it to change how TTS pronounces it?  to fix the capitalization of certain cities?
         return holding
         
-    def _get_alerts(self, full_status, all_warnings_on_change):
+    def _get_alerts(self, full_status, all_warnings_on_change=False):
         changed_proximity, changed_resources = self.monitor.check_for_changes()
         any_alert_changed = False
         prioritized_warnings = []
@@ -160,4 +160,4 @@ class AlertBot(object):
     # get the status without checking
     def status(self):
         now = datetime.datetime.now()
-        return (now, self._get_alerts(full_status=True, all_warnings_on_change=False))
+        return (now, self._get_alerts(full_status=True))
