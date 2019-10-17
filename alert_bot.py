@@ -6,12 +6,28 @@
 
 # TODO: commands, reporting/unique players (later), saving 'seen' to disk
 # figure out clearing of state after a disconnect (or is that a 'main' thing?)
+
+# TODO: inverted warnings, for population info
 import news_reel_monitor
 import bisect
 import datetime
+from enum import Enum, auto
  
 UNCLANNED_PLACEHOLDER = 'unclanned'
  
+class DataSetCategory(Enum):
+    ADMINISTRATOR = 'admin'
+    ALLY_CLAN = 'allyclan'
+    ALLY_PLAYER = 'allyplayer'
+    IGNORE_CLAN = 'ignoreclan'
+    IGNORE_PLAYER = 'ignoreplayer'
+    IGNORE_HOLDING = 'ignoreholding'
+    
+class DataMappingCategory(Enum):
+    FILTER_PLAYER = 'filterplayer'
+    FILTER_CLAN = 'filterclan'
+    FILTER_HOLDING = 'filterholding'
+    
 def oxford_comma_delimited_string(entries):
     count = len(entries)
     if count:
@@ -26,21 +42,53 @@ class AlertBot(object):
         self.monitor = monitor
         self.seen_players = {}
         # TODO: the 'unique' stuff
+        self._data_sets = {}
+        self._data_mappings = {}
     
+    def data_set(self, category):
+        data = self._data_sets.get(category)
+        if data is None:
+            self._data_sets[category] = data = set()
+        return data
+    
+    def data_mapping(self, category):
+        data = self._data_mappings.get(category)
+        if data is None:
+            self._data_mappings[category] = data = {}
+        return data
+        
     def is_friendly(self, name, clan):
-        # TODO: fill this in
-        return False
-    def filter_name(self, name):
+        name = name.lower()
+        clan = clan.lower()
+        return (
+                name in self.data_set(DataSetCategory.ALLY_PLAYER) or
+                clan in self.data_set(DataSetCategory.ALLY_CLAN) or
+                name in self.data_set(DataSetCategory.IGNORE_PLAYER) or
+                clan in self.data_set(DataSetCategory.IGNORE_CLAN)
+        )
+        
+    def filter_player(self, name):
         # TODO: offensive/stupid player names
+        filtered_name = self.data_mapping(DataMappingCategory.FILTER_PLAYER).get(name.lower())
+        if filtered_name is not None:
+            return filtered_name
         return name
+        
     def filter_clan(self, clan):
         if clan is None:
             global UNCLANNED_PLACEHOLDER
             return UNCLANNED_PLACEHOLDER
         # TODO: offensive/stupid clan names
+        filtered_clan = self.data_mapping(DataMappingCategory.FILTER_CLAN).get(clan.lower())
+        if filtered_clan is not None:
+            return filtered_clan
         return clan
+        
     def filter_holding(self, holding):
         # TODO: change it to change how TTS pronounces it?  to fix the capitalization of certain cities?
+        filtered_holding = self.data_mapping(DataMappingCategory.FILTER_HOLDING).get(holding.lower())
+        if filtered_holding is not None:
+            return filtered_holding
         return holding
         
     def _get_alerts(self, full_status, all_warnings_on_change=False):
@@ -93,7 +141,7 @@ class AlertBot(object):
                         clan_string = self.monitor.cased_clan_name.get(clan)
                     if len(enemies) == 1:
                         name = next(iter(enemies))
-                        name_string = self.filter_name(name)
+                        name_string = self.filter_player(name)
                         if name_string == name:
                             # unfiltered, fix the case instead
                             name_string = self.monitor.cased_player_name.get(name)
