@@ -573,7 +573,7 @@ class ApiClient(object):
                     if message == ApiMessage.INVALID_CREDENTIALS:
                         raise ApiError('Invalid Credentials: Incorrect password.')
                     elif message is not None:
-                        raise ApiError(f"Unexpected message: {message.value}")
+                        raise ApiError(f"Unexpected message: {message}")
                     # this state may not actually occur
                     raise ApiError('Bad response; missing SessionKey.')
                 session_key = session_key_element.text if (session_key_element is not None) else None
